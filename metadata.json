@@ -1,0 +1,8 @@
+{
+  "name": "Remix Twilight Threshold v1.3",
+  "description": "A stylized twilight anime 3D enclosed apartment and psychological meta-horror exploration prototype featuring six interconnected rooms.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
