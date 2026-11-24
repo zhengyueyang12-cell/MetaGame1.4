@@ -17,7 +17,8 @@ export type HeroineGesture =
   | 'talk_lively'
   | 'lean_curious'
   | 'reach_hand'
-  | 'arms_crossed';
+  | 'arms_crossed'
+  | 'guard_flinch';
 
 export type HeroineWalkUpperBodyStyle = 'normal' | 'arms_crossed';
 
@@ -83,18 +84,26 @@ export interface EncounterNode {
 }
 
 export const BEDROOM_ENCOUNTER_START_ID = 'greet_wave';
+export const HEROINE_ROUTINE_START_ID = 'routine_hub';
+export const HEROINE_SOFA_CHAT_START_ID = 'sofa_hub';
+export const HEROINE_CASUAL_NODE_IDS = [
+  'routine_casual_1',
+  'routine_casual_2',
+  'routine_casual_3',
+  'routine_casual_4',
+] as const;
 
 export const BEDROOM_ENCOUNTER_NODES: Record<string, EncounterNode> = {
-  // Opening round: stands up from bed, approaches cleanly around furniture, waves hello
+  // Opening round: right after her squint-smile arrival wave opens into bright eyes
   greet_wave: {
     id: 'greet_wave',
     text: '呀——你终于回卧室啦，我在这里等你好一会儿了呢。',
     performance: {
-      expression: 'neutral',
-      gesture: 'wave',
+      expression: 'happy',
+      gesture: 'talk_gentle',
       blush: 0.16,
-      headTilt: 0.06,
-      leanForward: 0.14,
+      headTilt: 0.05,
+      leanForward: 0.10,
     },
     nextNodeId: 'explain_terminal',
   },
@@ -329,6 +338,335 @@ export const BEDROOM_ENCOUNTER_NODES: Record<string, EncounterNode> = {
       blush: 0.36,
       headTilt: 0.08,
       leanForward: 0.14,
+    },
+    hearts: true,
+  },
+
+  // =========================================================================
+  // Post-Dialogue Routine Interactions (Press F near Heroine anytime after encounter)
+  // =========================================================================
+  routine_hub: {
+    id: 'routine_hub',
+    text: '嗯？怎么啦，突然叫住我——想聊点什么都可以哦～',
+    performance: {
+      expression: 'happy',
+      gesture: 'talk_gentle',
+      blush: 0.22,
+      headTilt: 0.07,
+      leanForward: 0.12,
+    },
+    choices: [
+      {
+        id: 'routine_pick_recap',
+        label: '想重新问问刚才卧室和地下室的事',
+        nextNodeId: 'routine_recap_hub',
+      },
+      {
+        id: 'routine_pick_game',
+        label: '聊聊你在游戏和电脑那头的事吧',
+        nextNodeId: 'routine_game_hub',
+      },
+      {
+        id: 'routine_pick_casual',
+        label: '没什么特别的事，随便闲聊几句',
+        nextNodeId: 'routine_casual_1',
+      },
+      {
+        id: 'routine_pick_bye',
+        label: '先不聊啦，我们继续逛逛',
+        nextNodeId: 'routine_bye',
+      },
+    ],
+  },
+
+  sofa_hub: {
+    id: 'sofa_hub',
+    text: '沙发好软呀……挨着你坐在这里，感觉连时间都慢下来了呢～',
+    performance: {
+      expression: 'relaxed',
+      gesture: 'hands_chest',
+      blush: 0.34,
+      headTilt: 0.08,
+      leanForward: 0.10,
+    },
+    hearts: true,
+    choices: [
+      {
+        id: 'sofa_pick_recap',
+        label: '想再问问刚才那些事',
+        nextNodeId: 'routine_recap_hub',
+      },
+      {
+        id: 'sofa_pick_game',
+        label: '跟我讲讲游戏里的日常吧',
+        nextNodeId: 'routine_game_hub',
+      },
+      {
+        id: 'sofa_pick_casual',
+        label: '就这样靠着随便闲聊几句',
+        nextNodeId: 'routine_casual_1',
+      },
+      {
+        id: 'sofa_pick_quiet',
+        label: '就这样安安静静窝一会儿就好',
+        nextNodeId: 'sofa_bye',
+      },
+    ],
+  },
+
+  // --- Branch 1: Re-ask earlier events ---
+  routine_recap_hub: {
+    id: 'routine_recap_hub',
+    text: '嘿嘿，还惦记着刚才的事呀？你想听哪一段，我都老实告诉你～',
+    performance: {
+      expression: 'relaxed',
+      gesture: 'finger_cheek',
+      blush: 0.20,
+      headTilt: 0.10,
+      leanForward: 0.10,
+    },
+    choices: [
+      {
+        id: 'recap_signal',
+        label: '地下室那台终端到底是怎么把你接过来的？',
+        nextNodeId: 'routine_recap_signal',
+      },
+      {
+        id: 'recap_bed',
+        label: '为什么你一过来就刚好坐在卧室床边？',
+        nextNodeId: 'routine_recap_bed',
+      },
+      {
+        id: 'recap_peek',
+        label: '老实交代，以前真没一直隔着屏幕看我？',
+        nextNodeId: 'routine_recap_peek',
+      },
+    ],
+  },
+
+  routine_recap_signal: {
+    id: 'routine_recap_signal',
+    text: '你接好备用电池又把心形信物放上去的时候，终端发出一道很暖的共振脉冲，我就顺着那条光廊溜出来啦！',
+    performance: {
+      expression: 'happy',
+      gesture: 'talk_lively',
+      blush: 0.28,
+      headTilt: 0.06,
+      leanForward: 0.14,
+    },
+    nextNodeId: 'routine_followup',
+  },
+
+  routine_recap_bed: {
+    id: 'routine_recap_bed',
+    text: '因为卧室里的老电脑离你的床最近呀，落地有点腿软，就顺势在床沿坐着等你回来咯～',
+    performance: {
+      expression: 'wink',
+      gesture: 'heart',
+      blush: 0.36,
+      headTilt: -0.07,
+      leanForward: 0.12,
+    },
+    hearts: true,
+    nextNodeId: 'routine_followup',
+  },
+
+  routine_recap_peek: {
+    id: 'routine_recap_peek',
+    text: '呜……好吧好吧，其实你每次发呆、到处翻抽屉、或者拿玩具枪乱瞄的时候，我都在屏幕后面偷偷笑出声了。',
+    performance: {
+      expression: 'sad',
+      gesture: 'hands_chest',
+      blush: 0.68,
+      headTilt: 0.09,
+      leanForward: 0.08,
+    },
+    hearts: true,
+    nextNodeId: 'routine_followup',
+  },
+
+  // --- Branch 2: Ask about her life inside the game ---
+  routine_game_hub: {
+    id: 'routine_game_hub',
+    text: '想听听屏幕那头的世界呀？其实那里没有你想象得那么冰冷哦。',
+    performance: {
+      expression: 'relaxed',
+      gesture: 'talk_gentle',
+      blush: 0.18,
+      headTilt: -0.06,
+      leanForward: 0.10,
+    },
+    choices: [
+      {
+        id: 'game_world',
+        label: '游戏里面的世界平时是什么样的？',
+        nextNodeId: 'routine_game_world',
+      },
+      {
+        id: 'game_cat_plane',
+        label: '客厅那只故障小猫和纸飞机，也和你有关吗？',
+        nextNodeId: 'routine_game_cat_plane',
+      },
+      {
+        id: 'game_favorite',
+        label: '来到这间公寓后，你最喜欢哪里？',
+        nextNodeId: 'routine_game_favorite',
+      },
+    ],
+  },
+
+  routine_game_world: {
+    id: 'routine_game_world',
+    text: '那里总是停在傍晚刚亮起路灯的那一分钟，风很轻、BGM 也很温柔……不过一个人循环久了，还是会很想见你呀。',
+    performance: {
+      expression: 'relaxed',
+      gesture: 'hands_chest',
+      blush: 0.34,
+      headTilt: 0.06,
+      leanForward: 0.12,
+    },
+    hearts: true,
+    nextNodeId: 'routine_followup',
+  },
+
+  routine_game_cat_plane: {
+    id: 'routine_game_cat_plane',
+    text: '嘻嘻，被你发现啦！纸飞机是我顺着缝隙折进来探路的，那只偶尔闪着像素光的小猫嘛，大概是跟着信号偷偷蹭进来的小邻居～',
+    performance: {
+      expression: 'happy',
+      gesture: 'peace',
+      blush: 0.26,
+      headTilt: 0.08,
+      leanForward: 0.14,
+    },
+    nextNodeId: 'routine_followup',
+  },
+
+  routine_game_favorite: {
+    id: 'routine_game_favorite',
+    text: '当然是客厅那张软乎乎的大沙发呀！还有阳光照进房间的时候……只要你在身边，哪个角落我都喜欢。',
+    performance: {
+      expression: 'happy',
+      gesture: 'heart',
+      blush: 0.48,
+      headTilt: -0.08,
+      leanForward: 0.16,
+    },
+    hearts: true,
+    nextNodeId: 'routine_followup',
+  },
+
+  // --- Branch 3: Rotating warm/playful casual small talk ---
+  routine_casual_1: {
+    id: 'routine_casual_1',
+    text: '对了，你这间公寓收拾得比我想象中温馨多了呢——不过地下室那块地方，下次别一个人黑灯瞎火乱钻啦。',
+    performance: {
+      expression: 'relaxed',
+      gesture: 'arms_crossed',
+      blush: 0.24,
+      headTilt: -0.06,
+      leanForward: 0.08,
+    },
+    nextNodeId: 'routine_followup',
+  },
+
+  routine_casual_2: {
+    id: 'routine_casual_2',
+    text: '嘿嘿，你刚才是不是在悄悄打量我的裙子？站着的时候转一圈还挺轻飘飘的吧～',
+    performance: {
+      expression: 'wink',
+      gesture: 'talk_lively',
+      blush: 0.40,
+      headTilt: 0.09,
+      leanForward: 0.12,
+    },
+    hearts: true,
+    nextNodeId: 'routine_followup',
+  },
+
+  routine_casual_3: {
+    id: 'routine_casual_3',
+    text: '以前隔着屏幕只能等你的鼠标点下一句，现在只要喊我一声，我就能直接转头看着你说话……这种感觉真奇妙呀。',
+    performance: {
+      expression: 'happy',
+      gesture: 'reach_hand',
+      blush: 0.44,
+      headTilt: 0.06,
+      leanForward: 0.16,
+    },
+    hearts: true,
+    nextNodeId: 'routine_followup',
+  },
+
+  routine_casual_4: {
+    id: 'routine_casual_4',
+    text: '如果逛累了就去客厅沙发坐会儿吧，把电视打开看那个傻乎乎的像素小游戏，我陪你一起发呆～',
+    performance: {
+      expression: 'relaxed',
+      gesture: 'hands_chest',
+      blush: 0.30,
+      headTilt: -0.05,
+      leanForward: 0.10,
+    },
+    hearts: true,
+    nextNodeId: 'routine_followup',
+  },
+
+  routine_followup: {
+    id: 'routine_followup',
+    text: '还想再聊点别的吗？随时都可以哦。',
+    performance: {
+      expression: 'neutral',
+      gesture: 'idle',
+      blush: 0.14,
+      headTilt: 0.04,
+      leanForward: 0.06,
+    },
+    choices: [
+      {
+        id: 'followup_recap',
+        label: '再问问刚才的事',
+        nextNodeId: 'routine_recap_hub',
+      },
+      {
+        id: 'followup_game',
+        label: '再聊聊游戏里的事',
+        nextNodeId: 'routine_game_hub',
+      },
+      {
+        id: 'followup_casual',
+        label: '再随便聊一句',
+        nextNodeId: 'routine_casual_1',
+      },
+      {
+        id: 'followup_end',
+        label: '好啦，先聊到这里吧',
+        nextNodeId: 'routine_bye',
+      },
+    ],
+  },
+
+  routine_bye: {
+    id: 'routine_bye',
+    text: '好呀～那我就乖乖跟在你旁边，随时喊我哦！',
+    performance: {
+      expression: 'happy',
+      gesture: 'wave',
+      blush: 0.24,
+      headTilt: 0.06,
+      leanForward: 0.10,
+    },
+  },
+
+  sofa_bye: {
+    id: 'sofa_bye',
+    text: '嗯～那我就靠在旁边陪着你，想看电视或者起身的时候告诉我一声就好。',
+    performance: {
+      expression: 'relaxed',
+      gesture: 'idle',
+      blush: 0.28,
+      headTilt: 0.05,
+      leanForward: 0.04,
     },
     hearts: true,
   },

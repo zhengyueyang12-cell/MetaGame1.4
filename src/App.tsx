@@ -3,6 +3,7 @@ import {
   BedroomEncounterOverlay,
   type BedroomEncounterOverlayHandle,
   type EncounterOverlayMode,
+  type HeroineFloatingPromptKind,
 } from './components/BedroomEncounterOverlay';
 import { GlitchCatDialogue } from './components/GlitchCatDialogue';
 import { GlitchDizzyOverlay } from './components/GlitchDizzyOverlay';
@@ -33,6 +34,9 @@ import {
 import {
   BEDROOM_ENCOUNTER_NODES,
   BEDROOM_ENCOUNTER_START_ID,
+  HEROINE_CASUAL_NODE_IDS,
+  HEROINE_ROUTINE_START_ID,
+  HEROINE_SOFA_CHAT_START_ID,
   type EncounterChoice,
 } from './data/bedroomEncounterScript';
 import { buildSoulSeedFileContent, VN_SCENES } from './data/millenniumScript';
@@ -166,6 +170,8 @@ export default function App() {
   const engineRef = useRef<ApartmentEngine | null>(null);
   const encounterOverlayRef = useRef<BedroomEncounterOverlayHandle | null>(null);
   const startHeroineEncounterRef = useRef<() => void>(() => {});
+  const startRoutineChatRef = useRef<(mode: 'standing' | 'sofa') => void>(() => {});
+  const casualChatIdxRef = useRef(0);
   const discoveredIdsRef = useRef<Set<string>>(new Set());
   const lastKeystrokeTsRef = useRef<number>(Date.now());
   const terminalTurnsCacheRef = useRef<Record<string, DualChannelTurn[]>>({});
@@ -225,8 +231,12 @@ export default function App() {
   });
   const [glitchCutsceneProgress, setGlitchCutsceneProgress] = useState<number | null>(null);
   const [heroineNear, setHeroineNear] = useState(false);
+  const [heroinePromptKind, setHeroinePromptKind] = useState<HeroineFloatingPromptKind | null>(null);
+  const [sofaCoSeated, setSofaCoSeated] = useState(false);
+  const [livingTvOn, setLivingTvOn] = useState(false);
   const [heroineTyping, setHeroineTyping] = useState(false);
   const [encounterPhase, setEncounterPhase] = useState<'idle' | 'walking' | 'dialogue'>('idle');
+  const [encounterKind, setEncounterKind] = useState<'main' | 'routine'>('main');
   const [encounterNodeId, setEncounterNodeId] = useState<string | null>(null);
   const encounterTokenRef = useRef(0);
   const [pcFocus, setPcFocus] = useState<{
@@ -472,6 +482,7 @@ export default function App() {
     vnAudioEngine.playSfx('click');
     setInspectMessage(null);
     setViewMode('first-person');
+    setEncounterKind('main');
     setEncounterPhase('walking');
     setEncounterNodeId(null);
     engine.startHeroineEncounter(() => {
@@ -483,10 +494,46 @@ export default function App() {
 
   startHeroineEncounterRef.current = handleStartHeroineEncounter;
 
+  const handleStartRoutineChat = useCallback(
+    (mode: 'standing' | 'sofa') => {
+      if (encounterPhase !== 'idle') return;
+      const engine = engineRef.current;
+      if (!engine) return;
+      encounterTokenRef.current += 1;
+      engine.setHeroinePoseTuner(null);
+      vnAudioEngine.unlock();
+      vnAudioEngine.playSfx('click');
+      setInspectMessage(null);
+      setViewMode('first-person');
+      setEncounterKind('routine');
+      engine.startRoutineHeroineChat();
+      const startId = mode === 'sofa' ? HEROINE_SOFA_CHAT_START_ID : HEROINE_ROUTINE_START_ID;
+      playEncounterNode(startId);
+    },
+    [encounterPhase, playEncounterNode]
+  );
+
+  startRoutineChatRef.current = handleStartRoutineChat;
+
+  const handlePromptClick = useCallback(() => {
+    if (heroinePromptKind === 'sofa') {
+      vnAudioEngine.unlock();
+      vnAudioEngine.playSfx('click');
+      engineRef.current?.startSofaCoSit();
+      return;
+    }
+    if (heroinePromptKind === 'chat') {
+      handleStartRoutineChat('standing');
+      return;
+    }
+    handleStartHeroineEncounter();
+  }, [handleStartHeroineEncounter, handleStartRoutineChat, heroinePromptKind]);
+
   const handleAdvanceEncounterLine = useCallback(() => {
     if (encounterPhase !== 'dialogue') return;
     const engine = engineRef.current;
     if (!engine) return;
+    engine.notifyEncounterPlayerInteraction();
     if (engine.completeHeroineSubtitleTyping()) {
       return;
     }
@@ -500,23 +547,55 @@ export default function App() {
       playEncounterNode(currentNode.nextNodeId);
     } else {
       encounterTokenRef.current += 1;
-      engine.finishHeroineEncounter();
-      setEncounterPhase('idle');
-      setEncounterNodeId(null);
-      setRealityAlert('她正跟在你身后，一起去客厅沙发玩游戏吧。');
+      if (encounterKind === 'routine') {
+        engine.finishRoutineHeroineChat();
+        setEncounterPhase('idle');
+        setEncounterNodeId(null);
+      } else {
+        engine.finishHeroineEncounter();
+        setEncounterPhase('idle');
+        setEncounterNodeId(null);
+        setRealityAlert('她正跟在你身后，按 F 可随时聊天，去客厅对着沙发按 F 还能一起窝着看电视～');
+      }
     }
-  }, [encounterNodeId, encounterPhase, playEncounterNode]);
+  }, [encounterKind, encounterNodeId, encounterPhase, playEncounterNode]);
 
   const handleSelectEncounterChoice = useCallback(
     (choice: EncounterChoice) => {
       if (encounterPhase !== 'dialogue') return;
+      engineRef.current?.notifyEncounterPlayerInteraction();
       vnAudioEngine.playSfx('click');
-      if (BEDROOM_ENCOUNTER_NODES[choice.nextNodeId]) {
-        playEncounterNode(choice.nextNodeId);
+      let nextId = choice.nextNodeId;
+      if (nextId === 'routine_casual_1') {
+        nextId =
+          HEROINE_CASUAL_NODE_IDS[casualChatIdxRef.current % HEROINE_CASUAL_NODE_IDS.length];
+        casualChatIdxRef.current += 1;
+      }
+      if (BEDROOM_ENCOUNTER_NODES[nextId]) {
+        playEncounterNode(nextId);
       }
     },
     [encounterPhase, playEncounterNode]
   );
+
+  const handleToggleSofaTv = useCallback(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    vnAudioEngine.unlock();
+    vnAudioEngine.playSfx('click');
+    const nextOn = engine.toggleLivingRoomTv();
+    setLivingTvOn(nextOn);
+  }, []);
+
+  const handleStandUpSofa = useCallback(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    vnAudioEngine.playSfx('click');
+    encounterTokenRef.current += 1;
+    setEncounterPhase('idle');
+    setEncounterNodeId(null);
+    engine.standUpFromSofaCoSit();
+  }, []);
 
   // Mount Three.js Apartment Engine
   useEffect(() => {
@@ -673,11 +752,29 @@ export default function App() {
       onHeroineProximityChange: (near) => {
         setHeroineNear(near);
       },
+      onHeroinePromptChange: (kind) => {
+        setHeroinePromptKind(kind);
+      },
       onHeroineTypingChange: (typing) => {
         setHeroineTyping(typing);
       },
       onRequestStartHeroineEncounter: () => {
         startHeroineEncounterRef.current();
+      },
+      onRequestStartRoutineChat: (mode) => {
+        startRoutineChatRef.current(mode);
+      },
+      onSofaCoSitChange: ({ active, tvOn }) => {
+        setSofaCoSeated(active);
+        setLivingTvOn(tvOn);
+        if (!active) {
+          encounterTokenRef.current += 1;
+          setEncounterPhase((prev) => (prev === 'dialogue' ? 'idle' : prev));
+          setEncounterNodeId(null);
+        }
+      },
+      onHeroineSofaTvToggled: (isOn) => {
+        setLivingTvOn(isOn);
       },
     });
 
@@ -1349,6 +1446,8 @@ export default function App() {
       setEncounterPhase('idle');
       setEncounterNodeId(null);
       setHeroineNear(false);
+      setHeroinePromptKind(null);
+      setSofaCoSeated(false);
       setHeroineTyping(false);
       engineRef.current?.resetHeroineToBed();
     }
@@ -1528,21 +1627,29 @@ export default function App() {
         }`}
       />
 
-      {/* Minimalist 3D World-Anchored Bedroom Encounter Prompt, Continue Cue & Floating Choices */}
+      {/* Minimalist 3D World-Anchored Heroine Prompts, Continue Cue, Floating Choices & Sofa Controls */}
       <BedroomEncounterOverlay
         ref={encounterOverlayRef}
         mode={encounterOverlayMode}
+        promptKind={heroinePromptKind}
         choices={activeEncounterChoices}
-        onStartEncounter={handleStartHeroineEncounter}
+        sofaCoSeated={sofaCoSeated && pcView === 'closed' && !hasAnyModalOpen && !showInventory && !showPaperNote}
+        livingTvOn={livingTvOn}
+        onStartEncounter={handlePromptClick}
         onAdvanceLine={handleAdvanceEncounterLine}
         onSelectChoice={handleSelectEncounterChoice}
+        onSofaChat={() => handleStartRoutineChat('sofa')}
+        onToggleLivingTv={handleToggleSofaTv}
+        onSwitchLivingTvChannel={() => {
+          engineRef.current?.switchLivingRoomTvChannel(true);
+        }}
+        onStandUpSofa={handleStandUpSofa}
       />
 
-      {/* 3D Apartment HUD Overlay (visible only when not seated at the monitor or in active heroine encounter) */}
+      {/* 3D Apartment HUD Overlay (stays visible during heroine encounter so player UI is never blocked) */}
       {pcView === 'closed' &&
         !pcFocus.active &&
-        glitchCutsceneProgress === null &&
-        encounterPhase === 'idle' && (
+        glitchCutsceneProgress === null && (
         <HudOverlay
           currentRoom={currentRoom}
           viewMode={viewMode}

@@ -43,12 +43,21 @@ interface DroppingChoiceGroup {
   }[];
 }
 
+export type HeroineFloatingPromptKind = 'bed' | 'chat' | 'sofa';
+
 interface BedroomEncounterOverlayProps {
   mode: EncounterOverlayMode;
+  promptKind?: HeroineFloatingPromptKind | null;
   choices: EncounterChoice[];
+  sofaCoSeated?: boolean;
+  livingTvOn?: boolean;
   onStartEncounter: () => void;
   onAdvanceLine: () => void;
   onSelectChoice: (choice: EncounterChoice) => void;
+  onSofaChat?: () => void;
+  onToggleLivingTv?: () => void;
+  onSwitchLivingTvChannel?: () => void;
+  onStandUpSofa?: () => void;
 }
 
 const CUTE_FONT_FAMILY =
@@ -70,7 +79,20 @@ export const BedroomEncounterOverlay = forwardRef<
   BedroomEncounterOverlayHandle,
   BedroomEncounterOverlayProps
 >(function BedroomEncounterOverlay(
-  { mode, choices, onStartEncounter, onAdvanceLine, onSelectChoice },
+  {
+    mode,
+    promptKind = 'bed',
+    choices,
+    sofaCoSeated = false,
+    livingTvOn = false,
+    onStartEncounter,
+    onAdvanceLine,
+    onSelectChoice,
+    onSofaChat,
+    onToggleLivingTv,
+    onSwitchLivingTvChannel,
+    onStandUpSofa,
+  },
   ref
 ) {
   const promptElRef = useRef<HTMLDivElement | null>(null);
@@ -174,6 +196,9 @@ export const BedroomEncounterOverlay = forwardRef<
         } else if (e.key === '3' && choices[2]) {
           e.preventDefault();
           triggerChoiceSelect(choices[2]);
+        } else if (e.key === '4' && choices[3]) {
+          e.preventDefault();
+          triggerChoiceSelect(choices[3]);
         }
         return;
       }
@@ -192,7 +217,7 @@ export const BedroomEncounterOverlay = forwardRef<
   }, [mode, choices, onAdvanceLine]);
 
   return (
-    <div className="fixed inset-0 z-20 pointer-events-none select-none overflow-hidden">
+    <div className="fixed inset-0 z-30 pointer-events-none select-none overflow-hidden">
       <style>{`
         @keyframes floatingChoiceGravityDrop {
           0% {
@@ -239,7 +264,11 @@ export const BedroomEncounterOverlay = forwardRef<
               className="text-[19px] tracking-[0.14em] text-[#ffdcf5] whitespace-nowrap transition-colors duration-200 group-hover:text-[#f0c4ff]"
               style={PINK_PURPLE_OUTLINE_STYLE}
             >
-              轻声唤她
+              {promptKind === 'sofa'
+                ? '一起坐沙发'
+                : promptKind === 'chat'
+                  ? '和她聊聊'
+                  : '轻声唤她'}
             </span>
             <span className="h-[1.5px] w-12 bg-gradient-to-r from-transparent via-[#f3a8ff]/90 to-transparent transition-all duration-200 group-hover:w-20 group-hover:via-[#ffd8f4]" />
             <span
@@ -247,6 +276,107 @@ export const BedroomEncounterOverlay = forwardRef<
               style={PINK_PURPLE_OUTLINE_STYLE}
             >
               点击 / 按 F
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* 1b. Minimalist floating Sofa Co-Sitting action strip (pure pink-purple outlined text, zero card/box) */}
+      {sofaCoSeated && (
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-6 pointer-events-auto">
+          {mode === 'hidden' && (
+            <>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSofaChat?.();
+                }}
+                className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
+              >
+                <span
+                  className="text-[16px] tracking-[0.08em] text-[#ffe0f7] group-hover:text-[#ecc4ff]"
+                  style={PINK_PURPLE_OUTLINE_STYLE}
+                >
+                  和她聊聊
+                </span>
+                <span
+                  className="text-[12px] text-[#e7aaff]"
+                  style={PINK_PURPLE_OUTLINE_STYLE}
+                >
+                  [F]
+                </span>
+              </button>
+              <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
+            </>
+          )}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleLivingTv?.();
+            }}
+            className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
+          >
+            <span
+              className="text-[16px] tracking-[0.08em] text-[#ffe0f7] group-hover:text-[#ecc4ff]"
+              style={PINK_PURPLE_OUTLINE_STYLE}
+            >
+              {livingTvOn ? '关掉电视' : '打开电视'}
+            </span>
+            <span
+              className="text-[12px] text-[#e7aaff]"
+              style={PINK_PURPLE_OUTLINE_STYLE}
+            >
+              [T]
+            </span>
+          </button>
+          {livingTvOn && (
+            <>
+              <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSwitchLivingTvChannel?.();
+                }}
+                className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
+              >
+                <span
+                  className="text-[16px] tracking-[0.08em] text-[#ffe0f7] group-hover:text-[#ecc4ff]"
+                  style={PINK_PURPLE_OUTLINE_STYLE}
+                >
+                  换台
+                </span>
+                <span
+                  className="text-[12px] text-[#e7aaff]"
+                  style={PINK_PURPLE_OUTLINE_STYLE}
+                >
+                  [C]
+                </span>
+              </button>
+            </>
+          )}
+          <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onStandUpSofa?.();
+            }}
+            className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
+          >
+            <span
+              className="text-[16px] tracking-[0.08em] text-[#ffe0f7] group-hover:text-[#ecc4ff]"
+              style={PINK_PURPLE_OUTLINE_STYLE}
+            >
+              起身离开
+            </span>
+            <span
+              className="text-[12px] text-[#e7aaff]"
+              style={PINK_PURPLE_OUTLINE_STYLE}
+            >
+              [E / Space]
             </span>
           </button>
         </div>

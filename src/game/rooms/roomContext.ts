@@ -249,6 +249,9 @@ export interface RoomBuildContext {
       time: number;
       accum: number;
       score: number;
+      channel: number;
+      channelTimer: number;
+      switchFlashTimer: number;
     };
     swivelChairs: SwivelChairRig[];
   };
@@ -1175,6 +1178,9 @@ export function createRoomBuildContext(
         time: 0,
         accum: 0,
         score: 0,
+        channel: 0,
+        channelTimer: 0,
+        switchFlashTimer: 0,
       },
       swivelChairs: [],
     },

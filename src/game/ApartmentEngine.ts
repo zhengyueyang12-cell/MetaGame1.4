@@ -308,8 +308,12 @@ export interface EngineCallbacks {
   onHitFeedback?: (hit: HitFeedbackPayload) => void;
   onGlitchCutsceneProgress?: (progress: number | null) => void;
   onHeroineProximityChange?: (near: boolean) => void;
+  onHeroinePromptChange?: (kind: 'bed' | 'chat' | 'sofa' | null) => void;
   onHeroineTypingChange?: (typing: boolean) => void;
   onRequestStartHeroineEncounter?: () => void;
+  onRequestStartRoutineChat?: (mode: 'standing' | 'sofa') => void;
+  onSofaCoSitChange?: (state: { active: boolean; tvOn: boolean }) => void;
+  onHeroineSofaTvToggled?: (isOn: boolean) => void;
 }
 
 export class ApartmentEngine {
@@ -487,7 +491,27 @@ export class ApartmentEngine {
   private floatingSubtitles!: FloatingSubtitleSystem;
   private heroineEncounterActive = false;
   private heroineNearReported = false;
+  private heroinePromptKindReported: 'bed' | 'chat' | 'sofa' | null = null;
   private heroineTypingReported = false;
+  private sofaSitState: 'none' | 'sitting' | 'seated' | 'standing' = 'none';
+  private sofaStateElapsed = 0;
+  private readonly sofaCamPos = new THREE.Vector3();
+  private readonly sofaSavedStandPos = new THREE.Vector3(3.48, 0, -4.78);
+  private sofaSavedStandYaw = -Math.PI / 2;
+  private sofaSavedStandPitch = 0;
+  private ambientMurmurTimer = 0;
+  private toyGunMurmurCooldown = 0;
+  private toyGunMurmurIndex = 0;
+  private toyGunAimGraceTimer = 0;
+  private heroineIntimacy = 55;
+  private sofaIntimacyTickAccum = 0;
+  private sofaMicroMurmurCooldown = 0;
+  private sofaProgramSwitchMurmurIdx = 0;
+  private encounterIsMainBedroom = false;
+  private encounterInactivityTimer = 0;
+  private readonly toyGunAimDirScratch = new THREE.Vector3();
+  private readonly toyGunToHeroineScratch = new THREE.Vector3();
+  private readonly toyGunChestScratch = new THREE.Vector3();
   private encounterProjectionListener:
     | ((proj: EncounterSpatialProjection) => void)
     | null = null;
@@ -752,6 +776,8 @@ export class ApartmentEngine {
     this.scene.add(this.vrmAvatar.heroine.root);
     this.scene.add(this.vrmAvatar.heroine.lookAtTarget);
     this.vrmAvatar.heroine.setAtmosphereMode(this.atmosphere);
+    this.loadPersistedHeroineIntimacy();
+    this.vrmAvatar.heroine.setIntimacy(this.heroineIntimacy);
     const bedroomSwivelChair =
       this.ctx.metaState.swivelChairs.find((c) => c.id === 'bed_swivel_chair') ?? null;
     this.vrmAvatar.heroine.setSceneHelpers(
@@ -2538,17 +2564,64 @@ export class ApartmentEngine {
       return;
     }
 
+    if (this.sofaSitState === 'sitting' || this.sofaSitState === 'seated') {
+      if (e.code === 'KeyT' && !e.repeat) {
+        const nextOn = this.toggleLivingRoomTv();
+        this.callbacks.onHeroineSofaTvToggled?.(nextOn);
+        return;
+      }
+      if (e.code === 'KeyC' && !e.repeat) {
+        this.switchLivingRoomTvChannel(true);
+        return;
+      }
+      if ((e.code === 'KeyE' || e.code === 'Escape') && !e.repeat) {
+        this.standUpFromSofaCoSit();
+        return;
+      }
+      if (e.code === 'Space' && !e.repeat && !this.heroineEncounterActive) {
+        this.standUpFromSofaCoSit();
+        return;
+      }
+      if (
+        !this.heroineEncounterActive &&
+        this.sofaStateElapsed > 0.35 &&
+        (e.code === 'KeyW' ||
+          e.code === 'KeyA' ||
+          e.code === 'KeyS' ||
+          e.code === 'KeyD' ||
+          e.code === 'ArrowUp' ||
+          e.code === 'ArrowDown' ||
+          e.code === 'ArrowLeft' ||
+          e.code === 'ArrowRight')
+      ) {
+        this.standUpFromSofaCoSit();
+        return;
+      }
+      if (e.code === 'KeyF' && !e.repeat && !this.heroineEncounterActive) {
+        // If looking directly at the Living Room TV while seated, pressing F toggles the TV;
+        // otherwise opens cozy sofa chat with her!
+        this.camera.getWorldDirection(this.toyGunAimDirScratch);
+        this.toyGunToHeroineScratch
+          .set(6.76 - this.camera.position.x, 1.24 - this.camera.position.y, -5.08 - this.camera.position.z)
+          .normalize();
+        if (this.toyGunAimDirScratch.dot(this.toyGunToHeroineScratch) > 0.88) {
+          const nextOn = this.toggleLivingRoomTv();
+          this.callbacks.onHeroineSofaTvToggled?.(nextOn);
+        } else {
+          this.callbacks.onRequestStartRoutineChat?.('sofa');
+        }
+        return;
+      }
+      return;
+    }
+
     if (e.code === 'KeyE') {
       this.triggerHoveredInteraction();
     } else if (e.code === 'KeyF') {
       if (this.heroineEncounterActive) {
         return;
       }
-      if (this.hoveredTarget) {
-        this.triggerHoveredInteraction();
-        return;
-      }
-      // Proximity fallback for picking up the Toy Gun on the Living Room sofa
+      // Proximity fallback for picking up the Toy Gun on the Living Room sofa first
       const toyGunWorld = this.ctx.metaState.toyGunWorldMesh;
       if (this.currentRoom === 'living' && toyGunWorld && toyGunWorld.visible) {
         const distToGun = Math.hypot(
@@ -2564,9 +2637,22 @@ export class ApartmentEngine {
           }
         }
       }
-      // Prioritize Bedroom Heroine Encounter when standing near the heroine in the bedroom
-      if (this.currentRoom === 'bedroom' && this.canTriggerHeroinePrompt()) {
+      // Prioritize Heroine contextual interactions (bedroom first encounter, sofa co-sit, or routine chat)
+      const promptKind = this.computeHeroinePromptKind();
+      if (promptKind === 'bed') {
         this.callbacks.onRequestStartHeroineEncounter?.();
+        return;
+      }
+      if (promptKind === 'sofa') {
+        this.startSofaCoSit();
+        return;
+      }
+      if (promptKind === 'chat') {
+        this.callbacks.onRequestStartRoutineChat?.('standing');
+        return;
+      }
+      if (this.hoveredTarget) {
+        this.triggerHoveredInteraction();
         return;
       }
       // Pressing F inside the bedroom sits at the PC; inside the basement launches the arcade cabinet
@@ -2637,13 +2723,14 @@ export class ApartmentEngine {
     this.lockedOnThisPointerDown = false;
 
     // Default mouse lock during first-person exploration: clicking the canvas immediately locks the cursor
-    // During active heroine dialogue, stay unlocked on canvas drag so player can both drag-look freely and click floating choices
+    // During active heroine dialogue OR while seated on the sofa, stay unlocked on canvas drag so player
+    // can both drag-look freely and click floating buttons / TV / choices immediately!
     if (!this.isPointerLocked && e.button === 0 && this.pcFocusState === 'none') {
-      if (this.pointerLockSupported && !this.heroineEncounterActive) {
+      if (this.pointerLockSupported && !this.heroineEncounterActive && this.sofaSitState === 'none') {
         this.lockedOnThisPointerDown = true;
         this.requestPointerLock();
       }
-      // Keep drag-look initialized as an instant fallback if a sandboxed iframe, ESC cooldown, or active dialogue keeps cursor free
+      // Keep drag-look initialized as an instant fallback if a sandboxed iframe, ESC cooldown, sofa sit, or active dialogue keeps cursor free
       this.isDraggingLook = true;
       this.dragMovedDist = 0;
       this.lastPointerX = e.clientX;
@@ -2740,6 +2827,21 @@ export class ApartmentEngine {
           this.callbacks.onOpenPaperAirplaneNote?.();
           return;
         }
+      }
+
+      // While seated on the Living Room sofa, clicking directly on the TV toggles it immediately!
+      if (this.sofaSitState === 'sitting' || this.sofaSitState === 'seated') {
+        const tvTarget = this.ctx.interactables.find((i) => i.id === 'liv_tv');
+        if (tvTarget) {
+          this.raycaster.setFromCamera(this.isPointerLocked ? _centerNDC : _pointerNDC, this.camera);
+          const hits = this.raycaster.intersectObject(tvTarget.mesh, true);
+          if (hits.length > 0 && hits[0].distance < 7.5) {
+            const nextOn = this.toggleLivingRoomTv();
+            this.callbacks.onHeroineSofaTvToggled?.(nextOn);
+            return;
+          }
+        }
+        return;
       }
 
       // Always inspect the exact target aimed at by the center crosshair dot
@@ -4059,14 +4161,7 @@ export class ApartmentEngine {
       const tv = this.ctx.metaState.livingTv;
       tv.isOn = turnOn;
       this.ctx.metaState.tvMetaOn = turnOn;
-      if (this.ctx.metaState.tvScreenMat) {
-        const activeTex = turnOn && tv.texture ? tv.texture : this.textures.tvStandby;
-        this.ctx.metaState.tvScreenMat.map = activeTex;
-        this.ctx.metaState.tvScreenMat.emissiveMap = activeTex;
-        this.ctx.metaState.tvScreenMat.emissive.setHex(turnOn ? 0xffffff : 0xffe8d6);
-        this.ctx.metaState.tvScreenMat.emissiveIntensity = turnOn ? 1.05 : 0.18;
-        this.ctx.metaState.tvScreenMat.needsUpdate = true;
-      }
+      this.applyLivingTvMaterialState(turnOn);
       if (tv.ledMat) {
         tv.ledMat.color.setHex(turnOn ? 0x52ff9a : 0xff5268);
       }
@@ -4196,6 +4291,11 @@ export class ApartmentEngine {
     if (!this.hoveredTarget) return;
     this.protagonist?.triggerHandReach(1.0);
     const targetId = this.hoveredTarget.id;
+
+    if (targetId === 'living_sofa') {
+      this.startSofaCoSit();
+      return;
+    }
 
     // Detect if the player pressed [F] on an interactive room or cabinet door to trigger Right-Hand IK
     const matchedDoor = this.ctx.doors.find((d) => d.id === targetId);
@@ -5459,6 +5559,69 @@ export class ApartmentEngine {
             this.teleportTargetRoom = null;
           }
           this.audio.tickFootsteps(dt, false, this.currentRoom);
+        } else if (this.sofaSitState !== 'none') {
+          this.sofaStateElapsed += dt;
+          this.playerMovingThisFrame = false;
+          this.playerActualSpeedThisFrame = 0;
+          _move.set(0, 0, 0);
+          this.playerMoveDirWorld.set(0, 0, 0);
+          this.updateRoomDoorsPhysics(dt, false);
+          this.audio.tickFootsteps(dt, false, this.currentRoom);
+
+          const seatEyeX = 2.68;
+          const seatEyeY = 1.15 + Math.sin(elapsed * 1.4) * 0.004;
+          const seatEyeZ = -4.78;
+          const defaultSofaYaw = -Math.PI / 2;
+
+          if (this.sofaSitState === 'sitting') {
+            this.sofaCamPos.x = THREE.MathUtils.damp(this.sofaCamPos.x, seatEyeX, 6.8, dt);
+            this.sofaCamPos.y = THREE.MathUtils.damp(this.sofaCamPos.y, seatEyeY, 6.8, dt);
+            this.sofaCamPos.z = THREE.MathUtils.damp(this.sofaCamPos.z, seatEyeZ, 6.8, dt);
+            const yawErr = Math.atan2(
+              Math.sin(defaultSofaYaw - this.yaw),
+              Math.cos(defaultSofaYaw - this.yaw)
+            );
+            this.yaw = THREE.MathUtils.damp(this.yaw, this.yaw + yawErr, 5.8, dt);
+            this.pitch = THREE.MathUtils.damp(this.pitch, 0.02, 5.8, dt);
+            this.playerFeetPos.set(this.sofaCamPos.x, 0, this.sofaCamPos.z);
+
+            if (
+              Math.hypot(this.sofaCamPos.x - seatEyeX, this.sofaCamPos.y - seatEyeY, this.sofaCamPos.z - seatEyeZ) < 0.04 ||
+              this.sofaStateElapsed > 1.05
+            ) {
+              this.sofaCamPos.set(seatEyeX, seatEyeY, seatEyeZ);
+              this.sofaSitState = 'seated';
+            }
+          } else if (this.sofaSitState === 'seated') {
+            this.sofaCamPos.set(seatEyeX, seatEyeY, seatEyeZ);
+            this.playerFeetPos.set(seatEyeX, 0, seatEyeZ);
+            // Keep free mouse head-look within natural comfortable seated neck/torso turn range
+            const relYaw = Math.atan2(
+              Math.sin(this.yaw - defaultSofaYaw),
+              Math.cos(this.yaw - defaultSofaYaw)
+            );
+            const clampedRelYaw = THREE.MathUtils.clamp(relYaw, -1.78, 1.78);
+            this.yaw = defaultSofaYaw + clampedRelYaw;
+            this.pitch = THREE.MathUtils.clamp(this.pitch, -0.68, 0.58);
+          } else if (this.sofaSitState === 'standing') {
+            const standEyeX = this.sofaSavedStandPos.x;
+            const standEyeY = this.sofaSavedStandPos.y + 1.62;
+            const standEyeZ = this.sofaSavedStandPos.z;
+            this.sofaCamPos.x = THREE.MathUtils.damp(this.sofaCamPos.x, standEyeX, 7.8, dt);
+            this.sofaCamPos.y = THREE.MathUtils.damp(this.sofaCamPos.y, standEyeY, 7.8, dt);
+            this.sofaCamPos.z = THREE.MathUtils.damp(this.sofaCamPos.z, standEyeZ, 7.8, dt);
+            this.playerFeetPos.set(this.sofaCamPos.x, this.sofaSavedStandPos.y, this.sofaCamPos.z);
+            if (
+              Math.hypot(this.sofaCamPos.x - standEyeX, this.sofaCamPos.y - standEyeY, this.sofaCamPos.z - standEyeZ) < 0.045 ||
+              this.sofaStateElapsed > 0.95
+            ) {
+              this.playerFeetPos.copy(this.sofaSavedStandPos);
+              this.sofaSitState = 'none';
+              this.sofaStateElapsed = 0;
+            }
+          }
+          this.camera.position.copy(this.sofaCamPos);
+          this.camera.rotation.set(this.pitch + this.camRecoilPitch, this.yaw, 0, 'YXZ');
         } else {
           const moveF =
             (this.keys['KeyW'] || this.keys['ArrowUp'] ? 1 : 0) -
@@ -5544,7 +5707,9 @@ export class ApartmentEngine {
           this.audio.tickFootsteps(dt, isMoving, this.currentRoom);
         }
 
-        this.applyCameraFromPlayer();
+        if (this.sofaSitState === 'none') {
+          this.applyCameraFromPlayer();
+        }
 
         // Room zone tracking & room-entry ceiling lamp flicker trigger (skipped mid-teleport glide!)
         if (!this.isTeleporting) {
@@ -5594,7 +5759,9 @@ export class ApartmentEngine {
     this.updateDoorHandleIk(dt);
 
     // 3.5 Update articulated protagonist character rig or custom local VRM avatar
-    const hideAvatar = this.viewMode === 'first-person' && this.pcFocusState !== 'none';
+    const hideAvatar =
+      this.viewMode === 'first-person' &&
+      (this.pcFocusState !== 'none' || this.sofaSitState !== 'none');
     const hasCustomVrm = this.vrmAvatar?.hasVrm() ?? false;
     this.protagonist?.update(dt, elapsed, {
       feetPos: this.playerFeetPos,
@@ -5677,6 +5844,7 @@ export class ApartmentEngine {
         );
         this.vrmAvatar.heroine.root.visible =
           this.vrmAvatar.heroine.isFollowingPlayer() ||
+          this.vrmAvatar.heroine.isSofaActive() ||
           this.vrmAvatar.heroine.isPoseTuning() ||
           this.ctx.sceneManager.isRoomVisible(heroineRoom.id);
       }
@@ -5936,8 +6104,11 @@ export class ApartmentEngine {
   }
 
   /**
-   * Renders a cheerful, high-saturation comical auto-playing retro 16-bit pixel minigame
-   * ("SUPER BOING!") onto the Living Room TV CanvasTexture when turned ON.
+   * Renders crisp 512x288 multi-channel retro pixel TV programs onto the Living Room TV CanvasTexture:
+   * - CH-01: ★ COZY ARCADE TV (bouncing cat-cap runner)
+   * - CH-02: ♥ STARLIGHT DRAMA (twinkling rooftop night romance)
+   * - CH-03: ♪ NEKO KITCHEN (calico cat chef flipping star pancakes)
+   * Auto-cycles programs every ~24s and triggers the heroine's sofa posture-adjust micro-action.
    */
   private updateLivingTvProgram(dt: number): void {
     const tv = this.ctx.metaState.livingTv;
@@ -5946,28 +6117,58 @@ export class ApartmentEngine {
     if (this.currentRoom === 'basement' || this.currentRoom === 'bathroom') return;
 
     tv.time += dt;
+    tv.channelTimer += dt;
+    if (tv.switchFlashTimer > 0) {
+      tv.switchFlashTimer = Math.max(0, tv.switchFlashTimer - dt);
+    }
+    if (tv.channelTimer >= 24) {
+      this.switchLivingRoomTvChannel(false);
+    }
+
     tv.accum += dt;
     if (tv.accum < 0.05) return; // Crisp ~20 FPS authentic retro animation
     tv.accum = 0;
 
     const c = tv.ctx;
-    const W = tv.canvas.width; // 256
-    const H = tv.canvas.height; // 144
+    const rawW = tv.canvas.width; // 512
+    const rawH = tv.canvas.height; // 288
+    const W = 256;
+    const H = 144;
+    const scaleX = rawW / W;
+    const scaleY = rawH / H;
     const t = tv.time;
-    const scroll = t * 72; // pixels/sec world scroll
 
-    // 1. High-saturation 16-bit banded sky
-    c.fillStyle = '#1fb6ff';
+    if (tv.channel === 1) {
+      this.renderLivingTvStarlightDrama(c, W, H, scaleX, scaleY, t);
+      this.renderLivingTvSwitchOverlay(c, rawW, rawH, tv.channel, tv.switchFlashTimer);
+      tv.texture.needsUpdate = true;
+      return;
+    }
+    if (tv.channel === 2) {
+      this.renderLivingTvNekoKitchen(c, W, H, scaleX, scaleY, t);
+      this.renderLivingTvSwitchOverlay(c, rawW, rawH, tv.channel, tv.switchFlashTimer);
+      tv.texture.needsUpdate = true;
+      return;
+    }
+
+    const scroll = t * 72; // logical pixels/sec world scroll
+
+    c.save();
+    c.scale(scaleX, scaleY);
+    c.imageSmoothingEnabled = false;
+
+    // 1. Rich, well-contrasted 16-bit sky (calibrated so colors stay crisp without white-out)
+    c.fillStyle = '#1875d1';
     c.fillRect(0, 0, W, 38);
-    c.fillStyle = '#4ad2ff';
+    c.fillStyle = '#2d9ae6';
     c.fillRect(0, 38, W, 34);
-    c.fillStyle = '#8ef0ff';
+    c.fillStyle = '#5ec2f2';
     c.fillRect(0, 72, W, 32);
-    c.fillStyle = '#d4ffea';
+    c.fillStyle = '#9fe2df';
     c.fillRect(0, 104, W, 12);
 
-    // 2. Pastel-bright rainbow arch in background
-    const rainbowCols = ['#ff3b6b', '#ff9924', '#ffe93b', '#3be865', '#36b5ff', '#b35cff'];
+    // 2. Vibrant rainbow arch in background
+    const rainbowCols = ['#e6325c', '#f0821d', '#e8c825', '#2ec455', '#2795e6', '#9447e6'];
     const rbX = 186 - ((scroll * 0.08) % 260) + 60;
     for (let i = 0; i < rainbowCols.length; i++) {
       c.strokeStyle = rainbowCols[i];
@@ -5977,70 +6178,76 @@ export class ApartmentEngine {
       c.stroke();
     }
 
-    // 3. Beaming comical pixel sun with sunglasses!
-    const sunY = 22 + Math.round(Math.sin(t * 3.2) * 2);
-    c.fillStyle = '#ffbb00';
+    // 3. Beaming comical pixel sun with sunglasses & crisp dark outline!
+    const sunY = 24 + Math.round(Math.sin(t * 3.2) * 2);
+    c.fillStyle = '#e89600';
     for (let r = 0; r < 8; r++) {
       const ang = t * 1.4 + (r * Math.PI) / 4;
       c.fillRect(Math.round(220 + Math.cos(ang) * 16) - 2, Math.round(sunY + Math.sin(ang) * 16) - 2, 4, 4);
     }
-    c.fillStyle = '#ffee38';
+    c.fillStyle = '#231633';
+    c.fillRect(209, sunY - 11, 22, 22);
+    c.fillStyle = '#ffcf24';
     c.fillRect(210, sunY - 10, 20, 20);
-    c.fillStyle = '#fff9a6';
+    c.fillStyle = '#ffe96b';
     c.fillRect(212, sunY - 8, 16, 16);
-    // Pixel sunglasses + goofy grin on the sun
     c.fillStyle = '#1d1430';
     c.fillRect(212, sunY - 4, 7, 5);
     c.fillRect(221, sunY - 4, 7, 5);
     c.fillRect(219, sunY - 3, 2, 2);
-    c.fillStyle = '#ffffff';
+    c.fillStyle = '#e8f6ff';
     c.fillRect(213, sunY - 3, 2, 2);
     c.fillRect(222, sunY - 3, 2, 2);
-    c.fillStyle = '#ff3d6e';
+    c.fillStyle = '#e62e5c';
     c.fillRect(216, sunY + 3, 8, 3);
 
-    // 4. Drifting puffy smiling pixel clouds
+    // 4. Drifting puffy smiling pixel clouds with soft sky-blue outline
     for (let ci = 0; ci < 3; ci++) {
       const cx = Math.floor(((ci * 98 + 40 - scroll * 0.25) % 310 + 310) % 310) - 36;
       const cy = 24 + (ci % 2) * 18;
-      c.fillStyle = '#ffffff';
+      c.fillStyle = '#2e5d8f';
+      c.fillRect(cx + 5, cy - 1, 22, 12);
+      c.fillRect(cx - 1, cy + 3, 34, 13);
+      c.fillStyle = '#f0f7ff';
       c.fillRect(cx + 6, cy, 20, 10);
       c.fillRect(cx, cy + 4, 32, 10);
-      c.fillStyle = '#c8f2ff';
+      c.fillStyle = '#b4dcf2';
       c.fillRect(cx + 2, cy + 12, 28, 3);
-      // Tiny happy eyes + rosy cheeks
-      c.fillStyle = '#2b2442';
+      c.fillStyle = '#241b38';
       c.fillRect(cx + 10, cy + 6, 2, 2);
       c.fillRect(cx + 20, cy + 6, 2, 2);
-      c.fillStyle = '#ff7fa8';
+      c.fillStyle = '#f06c98';
       c.fillRect(cx + 7, cy + 8, 3, 2);
       c.fillRect(cx + 22, cy + 8, 3, 2);
     }
 
-    // 5. Rolling saturated lime hills
+    // 5. Rolling saturated hills with dark horizon edge
     for (let hi = 0; hi < 5; hi++) {
       const hx = Math.floor(((hi * 78 - scroll * 0.45) % 390 + 390) % 390) - 60;
       const hRad = 26 + (hi % 2) * 10;
-      c.fillStyle = hi % 2 === 0 ? '#57eb52' : '#2fd453';
+      c.fillStyle = '#185e2a';
+      c.fillRect(hx - 1, 113 - hRad, hRad * 2 + 2, hRad + 1);
+      c.fillStyle = hi % 2 === 0 ? '#3bc443' : '#26a844';
       c.fillRect(hx, 114 - hRad, hRad * 2, hRad);
-      c.fillStyle = '#8cff66';
+      c.fillStyle = '#6fe058';
       c.fillRect(hx + 4, 114 - hRad, hRad * 2 - 8, 5);
     }
 
-    // 6. Vibrant checkered arcade grass & soil track
+    // 6. Crisp checkered arcade grass & warm terracotta soil track
     const groundY = 112;
-    c.fillStyle = '#29db4c';
+    c.fillStyle = '#134721';
+    c.fillRect(0, groundY - 1, W, 1);
+    c.fillStyle = '#24bd42';
     c.fillRect(0, groundY, W, 10);
-    c.fillStyle = '#ff9c38';
+    c.fillStyle = '#cf7227';
     c.fillRect(0, groundY + 10, W, H - groundY - 10);
-    c.fillStyle = '#d96e1c';
     const tileOff = Math.floor(scroll) % 16;
     for (let gx = -16; gx < W + 16; gx += 16) {
       const tx = gx - tileOff;
-      c.fillStyle = '#14ad35';
+      c.fillStyle = '#148f2e';
       c.fillRect(tx, groundY, 8, 5);
       c.fillRect(tx + 8, groundY + 5, 8, 5);
-      c.fillStyle = '#d96e1c';
+      c.fillStyle = '#a85116';
       c.fillRect(tx, groundY + 12, 8, 8);
       c.fillRect(tx + 8, groundY + 20, 8, 8);
     }
@@ -6053,19 +6260,17 @@ export class ApartmentEngine {
     let popupText = '';
     let popupX = heroX;
     let popupY = 66;
-    let popupColor = '#ffee33';
+    let popupColor = '#ffe438';
 
-    // Determine obstacles on screen & auto-jump whenever one approaches heroX
     const baseIdx = Math.floor((scroll - 40) / spacing);
     for (let k = baseIdx; k <= baseIdx + 4; k++) {
       const obsWorldX = k * spacing + 140;
       const obsX = Math.round(obsWorldX - scroll);
       const isWatermelon = Math.abs(k) % 2 === 1;
 
-      // Hero auto-jump arc centered smoothly over approaching obstacle
       const distToHero = obsX - heroX;
       if (distToHero > -34 && distToHero < 42) {
-        const u = (distToHero + 34) / 76; // 0..1 across jump
+        const u = (distToHero + 34) / 76;
         const arc = Math.sin(u * Math.PI);
         if (arc > heroJumpHeight) {
           heroJumpHeight = arc;
@@ -6073,83 +6278,84 @@ export class ApartmentEngine {
         }
         if (Math.abs(distToHero) < 18) {
           popupText = isWatermelon ? 'WHOA!!' : 'BOING!';
-          popupX = heroX - 6;
+          popupX = heroX - 4;
           popupY = Math.round(groundY - 38 - arc * 36);
-          popupColor = '#fff23b';
+          popupColor = '#ffe940';
         }
       }
 
       if (obsX > -24 && obsX < W + 24) {
         if (isWatermelon) {
-          // Giant rolling comical pixel watermelon!
           const rollPhase = Math.floor(t * 14) % 2;
           const wy = groundY - 16 - Math.round(Math.abs(Math.sin(t * 10 + k)) * 3);
-          c.fillStyle = '#15993b';
+          c.fillStyle = '#122119';
+          c.fillRect(obsX - 9, wy - 1, 18, 18);
+          c.fillStyle = '#148735';
           c.fillRect(obsX - 8, wy, 16, 16);
-          c.fillStyle = '#38d958';
+          c.fillStyle = '#32c450';
           c.fillRect(obsX - 6, wy + 2, 12, 12);
-          c.fillStyle = '#0d6b28';
+          c.fillStyle = '#0d5e24';
           c.fillRect(obsX - 2 + rollPhase * 2, wy + 1, 3, 14);
-          // Silly googly eyes on the watermelon
-          c.fillStyle = '#ffffff';
+          c.fillStyle = '#f5faff';
           c.fillRect(obsX - 5, wy + 4, 4, 4);
           c.fillRect(obsX + 1, wy + 4, 4, 4);
           c.fillStyle = '#120d1f';
           c.fillRect(obsX - 4, wy + 5, 2, 2);
           c.fillRect(obsX + 2, wy + 5, 2, 2);
         } else {
-          // Squishy high-saturation neon-pink jelly slime!
           const squish = Math.sin(t * 11 + k * 2);
           const sw = 18 + Math.round(squish * 3);
           const sh = 14 - Math.round(squish * 3);
           const sx = obsX - Math.floor(sw / 2);
           const sy = groundY - sh;
-          c.fillStyle = '#ff2994';
+          c.fillStyle = '#290d22';
+          c.fillRect(sx - 1, sy + 1, sw + 2, sh);
+          c.fillRect(sx + 1, sy - 1, sw - 2, sh + 2);
+          c.fillStyle = '#e82482';
           c.fillRect(sx, sy + 2, sw, sh - 2);
           c.fillRect(sx + 2, sy, sw - 4, sh);
-          c.fillStyle = '#ff87c9';
+          c.fillStyle = '#ff78bd';
           c.fillRect(sx + 3, sy + 2, 5, 3);
-          // Derpy wide eyes & tiny tongue
-          c.fillStyle = '#ffffff';
+          c.fillStyle = '#f5faff';
           c.fillRect(obsX - 6, sy + 4, 4, 5);
           c.fillRect(obsX + 2, sy + 4, 4, 5);
           c.fillStyle = '#1a0c26';
           c.fillRect(obsX - 5, sy + 5, 2, 3);
           c.fillRect(obsX + 3, sy + 5, 2, 3);
-          c.fillStyle = '#ffee3b';
+          c.fillStyle = '#ffe038';
           c.fillRect(obsX - 2, sy + 9, 4, 3);
         }
       }
 
-      // Floating collectible spinning gold star-coin or strawberry cake above the obstacle!
       const coinX = obsX + 2;
       const coinY = groundY - 46 + Math.round(Math.sin(t * 7 + k) * 3);
       const collected = distToHero < 4;
       if (!collected && coinX > -12 && coinX < W + 12) {
         if (isWatermelon) {
-          // Giant cute pixel strawberry cake slice!
-          c.fillStyle = '#fff7e0';
+          c.fillStyle = '#291421';
+          c.fillRect(coinX - 7, coinY - 1, 14, 12);
+          c.fillStyle = '#f7ebd0';
           c.fillRect(coinX - 6, coinY, 12, 10);
-          c.fillStyle = '#ff4d79';
+          c.fillStyle = '#e83d68';
           c.fillRect(coinX - 6, coinY + 3, 12, 3);
-          c.fillStyle = '#ff1f53';
+          c.fillStyle = '#e6194b';
           c.fillRect(coinX - 3, coinY - 4, 6, 5);
-          c.fillStyle = '#3be85e';
+          c.fillStyle = '#2ec44d';
           c.fillRect(coinX - 2, coinY - 6, 4, 2);
         } else {
-          // Spinning bright golden coin
           const spinW = Math.max(4, Math.round(Math.abs(Math.cos(t * 8 + k)) * 10));
-          c.fillStyle = '#ffae00';
+          c.fillStyle = '#332008';
+          c.fillRect(coinX - Math.floor(spinW / 2) - 2, coinY - 2, spinW + 4, 14);
+          c.fillStyle = '#e69800';
           c.fillRect(coinX - Math.floor(spinW / 2) - 1, coinY - 1, spinW + 2, 12);
-          c.fillStyle = '#fff03b';
+          c.fillStyle = '#ffe030';
           c.fillRect(coinX - Math.floor(spinW / 2), coinY, spinW, 10);
-          c.fillStyle = '#ffffff';
+          c.fillStyle = '#fff9d6';
           c.fillRect(coinX - 1, coinY + 2, 2, 5);
         }
       } else if (collected && distToHero > -24) {
-        // Sparkle burst when collected!
         const burst = (-distToHero + 4) * 0.7;
-        const burstCols = ['#ffee33', '#ff3d8b', '#38f2ff', '#7dff42'];
+        const burstCols = ['#ffe030', '#ff3680', '#2ee0f5', '#6ee03b'];
         for (let b = 0; b < 6; b++) {
           const ba = (b / 6) * Math.PI * 2 + t * 5;
           c.fillStyle = burstCols[b % burstCols.length];
@@ -6161,30 +6367,37 @@ export class ApartmentEngine {
           );
         }
         popupText = isWatermelon ? 'YUM! +200' : '+100 ★';
-        popupX = coinX - 12;
+        popupX = coinX - 8;
         popupY = coinY - 8 - Math.round(burst * 0.4);
-        popupColor = '#ffffff';
+        popupColor = '#fff7d6';
       }
     }
 
-    // 8. Draw the comical chubby pixel hero ("Bouncy Cat-Cap Kid")
+    // 8. Draw the comical chubby pixel hero ("Bouncy Cat-Cap Kid") with crisp dark pixel outline
     const jumpPx = Math.round(heroJumpHeight * 42);
     const hy = groundY - 22 - jumpPx;
     const runFrame = Math.floor(t * 14) % 2;
 
-    // Ground shadow
     const shadowW = Math.max(8, 18 - Math.round(heroJumpHeight * 9));
-    c.fillStyle = 'rgba(18, 86, 36, 0.45)';
+    c.fillStyle = 'rgba(14, 64, 28, 0.52)';
     c.fillRect(heroX - Math.floor(shadowW / 2), groundY + 1, shadowW, 3);
 
-    // Flapping crimson superhero mini-cape
     const capeFlap = Math.round(Math.sin(t * 22) * 3);
-    c.fillStyle = '#ff2957';
+    c.fillStyle = '#290d18';
+    c.fillRect(heroX - 21, hy + 7 + capeFlap, 16, 9);
+    c.fillStyle = '#e8234e';
     c.fillRect(heroX - 16, hy + 8 + capeFlap, 10, 7);
     c.fillRect(heroX - 20, hy + 10 + capeFlap, 6, 5);
 
-    // Stubby pumping pixel legs
-    c.fillStyle = '#2d4bff';
+    c.fillStyle = '#181d40';
+    if (jumpPx > 4) {
+      c.fillRect(heroX - 8, hy + 17, 7, 7);
+      c.fillRect(heroX + 2, hy + 15, 7, 7);
+    } else {
+      c.fillRect(heroX - 7 + (runFrame ? 3 : -2), hy + 16, 7, 7);
+      c.fillRect(heroX + 1 + (runFrame ? -2 : 3), hy + 16, 7, 7);
+    }
+    c.fillStyle = '#2a45e6';
     if (jumpPx > 4) {
       c.fillRect(heroX - 7, hy + 18, 5, 5);
       c.fillRect(heroX + 3, hy + 16, 5, 5);
@@ -6193,56 +6406,43 @@ export class ApartmentEngine {
       c.fillRect(heroX + 2 + (runFrame ? -2 : 3), hy + 17, 5, 5);
     }
 
-    // Chubby bright tangerine jumpsuit torso
-    c.fillStyle = '#ff6b1a';
+    c.fillStyle = '#241421';
+    c.fillRect(heroX - 9, hy + 7, 18, 13);
+    c.fillRect(heroX - 10, hy - 8, 21, 18);
+    c.fillStyle = '#ed5f14';
     c.fillRect(heroX - 8, hy + 8, 16, 11);
-    c.fillStyle = '#ffe53b';
-    c.fillRect(heroX - 3, hy + 11, 6, 4); // Belly star emblem
+    c.fillStyle = '#ffd930';
+    c.fillRect(heroX - 3, hy + 11, 6, 4);
 
-    // Big round cream head + goofy mint-green cat-ear beanie!
-    c.fillStyle = '#ffe0bd';
+    c.fillStyle = '#f5cfa8';
     c.fillRect(heroX - 8, hy - 3, 17, 12);
-    c.fillStyle = '#26e8a6';
+    c.fillStyle = '#1ec98e';
     c.fillRect(heroX - 9, hy - 7, 19, 6);
-    // Cute cat ears on the beanie
     c.fillRect(heroX - 8, hy - 11, 4, 4);
     c.fillRect(heroX + 5, hy - 11, 4, 4);
-    c.fillStyle = '#ff7eb6';
+    c.fillStyle = '#f06ba6';
     c.fillRect(heroX - 7, hy - 9, 2, 2);
     c.fillRect(heroX + 6, hy - 9, 2, 2);
 
-    // Huge comedic googly eyes & cheerful open mouth!
-    c.fillStyle = '#ffffff';
+    c.fillStyle = '#f5faff';
     c.fillRect(heroX - 3, hy, 5, 5);
     c.fillRect(heroX + 4, hy, 5, 5);
     c.fillStyle = '#1a1229';
     c.fillRect(heroX - 1, hy + (heroFlip ? 1 : 2), 2, 2);
     c.fillRect(heroX + 6, hy + (heroFlip ? 1 : 2), 2, 2);
-    // Rosy cheeks + happy 'D' grin
-    c.fillStyle = '#ff5989';
+    c.fillStyle = '#eb4c7c';
     c.fillRect(heroX - 6, hy + 4, 3, 2);
     c.fillRect(heroX + 1, hy + 5, 5, 3);
 
-    // 9. Floating comical pixel action popup ("BOING!", "YUM!")
-    if (popupText) {
-      c.font = 'bold 9px monospace';
-      c.textAlign = 'center';
-      c.fillStyle = '#1f1233';
-      c.fillText(popupText, popupX + 1, popupY + 1);
-      c.fillStyle = popupColor;
-      c.fillText(popupText, popupX, popupY);
-    }
-
-    // 10. Crisp Retro Arcade HUD bar at top
-    c.fillStyle = 'rgba(22, 16, 42, 0.72)';
+    // 10. Crisp Retro Arcade HUD bar background & pixel hearts
+    c.fillStyle = 'rgba(18, 12, 36, 0.84)';
     c.fillRect(0, 0, W, 16);
-    c.fillStyle = '#ff477e';
+    c.fillStyle = '#e83c72';
     c.fillRect(0, 15, W, 1);
 
-    // Pixel hearts on top-left
     for (let h = 0; h < 3; h++) {
       const hx = 6 + h * 11;
-      c.fillStyle = '#ff3666';
+      c.fillStyle = '#f03060';
       c.fillRect(hx, 4, 3, 3);
       c.fillRect(hx + 4, 4, 3, 3);
       c.fillRect(hx, 6, 7, 3);
@@ -6250,19 +6450,295 @@ export class ApartmentEngine {
       c.fillRect(hx + 2, 11, 3, 1);
     }
 
-    // Live incrementing score & cozy channel tag
+    c.restore();
+
+    // 9 & 10b. Render sharp native 512x288 text overlays AFTER restoring scale so letters are razor-sharp!
+    if (popupText) {
+      c.font = 'bold 18px monospace';
+      c.textAlign = 'center';
+      c.lineWidth = 3.5;
+      c.strokeStyle = '#1b0f2e';
+      c.strokeText(popupText, popupX * scaleX, popupY * scaleY);
+      c.fillStyle = popupColor;
+      c.fillText(popupText, popupX * scaleX, popupY * scaleY);
+    }
+
     const liveScore = 1200 + Math.floor(t * 85) * 10;
     tv.score = liveScore;
-    c.font = 'bold 9px monospace';
+    c.font = 'bold 17px monospace';
     c.textAlign = 'left';
-    c.fillStyle = '#ffe94d';
-    c.fillText(`SCORE ${String(liveScore).padStart(6, '0')}`, 46, 11);
+    c.fillStyle = '#ffdf40';
+    c.fillText(`SCORE ${String(liveScore).padStart(6, '0')}`, 46 * scaleX, 11.5 * scaleY);
 
     c.textAlign = 'right';
-    c.fillStyle = Math.floor(t * 3) % 2 === 0 ? '#6eff9e' : '#ffffff';
-    c.fillText('★ COZY ARCADE TV', W - 6, 11);
+    c.fillStyle = Math.floor(t * 3) % 2 === 0 ? '#5ef08f' : '#eef5ff';
+    c.fillText('★ COZY ARCADE TV', (W - 6) * scaleX, 11.5 * scaleY);
 
+    this.renderLivingTvSwitchOverlay(c, rawW, rawH, tv.channel, tv.switchFlashTimer);
     tv.texture.needsUpdate = true;
+  }
+
+  private renderLivingTvStarlightDrama(
+    c: CanvasRenderingContext2D,
+    W: number,
+    H: number,
+    scaleX: number,
+    scaleY: number,
+    t: number
+  ): void {
+    c.save();
+    c.scale(scaleX, scaleY);
+    c.imageSmoothingEnabled = false;
+
+    // 1. Deep twilight-violet night sky bands
+    c.fillStyle = '#140f33';
+    c.fillRect(0, 0, W, 38);
+    c.fillStyle = '#24184f';
+    c.fillRect(0, 38, W, 32);
+    c.fillStyle = '#40266b';
+    c.fillRect(0, 70, W, 28);
+    c.fillStyle = '#6c3b7a';
+    c.fillRect(0, 98, W, 18);
+
+    // 2. Twinkling pixel stars
+    for (let s = 0; s < 26; s++) {
+      const sx = (s * 43 + 17) % (W - 12) + 6;
+      const sy = (s * 29 + 19) % 72 + 16;
+      const blink = Math.sin(t * 3.2 + s * 1.7) > 0.15;
+      c.fillStyle = blink ? '#fff1c9' : '#8b7cc2';
+      c.fillRect(sx, sy, blink ? 2 : 1, blink ? 2 : 1);
+    }
+
+    // 3. Occasional shooting star arc
+    const meteorCycle = t % 6.5;
+    if (meteorCycle < 1.1) {
+      const u = meteorCycle / 1.1;
+      const mx = Math.round(40 + u * 165);
+      const my = Math.round(24 + u * 36);
+      c.fillStyle = '#ffd9f5';
+      c.fillRect(mx - 10, my - 2, 10, 1);
+      c.fillStyle = '#ffffff';
+      c.fillRect(mx, my, 3, 2);
+    }
+
+    // 4. Warm pixel crescent moon
+    c.fillStyle = '#ffe585';
+    c.fillRect(194, 24, 20, 20);
+    c.fillStyle = '#140f33';
+    c.fillRect(202, 22, 16, 18);
+
+    // 5. Distant glowing city skyline
+    const buildings = [
+      { x: 0, w: 28, h: 38 },
+      { x: 26, w: 22, h: 52 },
+      { x: 48, w: 30, h: 34 },
+      { x: 80, w: 24, h: 48 },
+      { x: 106, w: 34, h: 40 },
+      { x: 142, w: 26, h: 54 },
+      { x: 170, w: 32, h: 36 },
+      { x: 204, w: 28, h: 46 },
+      { x: 230, w: 28, h: 38 },
+    ];
+    for (let bi = 0; bi < buildings.length; bi++) {
+      const b = buildings[bi];
+      const by = 114 - b.h;
+      c.fillStyle = '#191230';
+      c.fillRect(b.x, by, b.w, b.h + 12);
+      for (let wy = by + 6; wy < 108; wy += 9) {
+        for (let wx = b.x + 4; wx < b.x + b.w - 5; wx += 7) {
+          const lit = ((bi * 7 + wx + wy) % 3) !== 0;
+          if (lit) {
+            c.fillStyle = (wx + wy) % 2 === 0 ? '#ffd27a' : '#ff99cc';
+            c.fillRect(wx, wy, 3, 4);
+          }
+        }
+      }
+    }
+
+    // 6. Rooftop railing + cozy bench with two silhouettes leaning together
+    c.fillStyle = '#201538';
+    c.fillRect(0, 112, W, H - 112);
+    c.fillStyle = '#4e3975';
+    c.fillRect(0, 111, W, 2);
+
+    // Left silhouette (leaning gently right) & right silhouette
+    const sway = Math.round(Math.sin(t * 1.4) * 1);
+    c.fillStyle = '#120b24';
+    // Bench
+    c.fillRect(88, 114, 80, 10);
+    // Heroine silhouette
+    c.fillRect(108 + sway, 94, 14, 14);
+    c.fillRect(104, 108, 20, 18);
+    // Partner silhouette
+    c.fillRect(126, 90, 15, 15);
+    c.fillRect(124, 105, 22, 21);
+
+    // Floating pastel hearts rising between them
+    for (let hi = 0; hi < 3; hi++) {
+      const phase = (t * 0.45 + hi * 0.34) % 1;
+      const hx = Math.round(118 + Math.sin(t * 2.2 + hi * 2) * 10);
+      const hy = Math.round(86 - phase * 34);
+      c.fillStyle = hi % 2 === 0 ? '#ff85c8' : '#d89eff';
+      c.fillRect(hx, hy, 2, 2);
+      c.fillRect(hx + 3, hy, 2, 2);
+      c.fillRect(hx, hy + 2, 5, 2);
+      c.fillRect(hx + 1, hy + 4, 3, 1);
+    }
+
+    // Top bar
+    c.fillStyle = 'rgba(18, 12, 36, 0.84)';
+    c.fillRect(0, 0, W, 16);
+    c.fillStyle = '#d47aff';
+    c.fillRect(0, 15, W, 1);
+    c.restore();
+
+    c.font = 'bold 17px monospace';
+    c.textAlign = 'left';
+    c.fillStyle = '#ffc7ef';
+    c.fillText('EP.08  TONIGHT ON THE ROOF', 10 * scaleX, 11.5 * scaleY);
+    c.textAlign = 'right';
+    c.fillStyle = '#e4b5ff';
+    c.fillText('♥ STARLIGHT DRAMA', (W - 6) * scaleX, 11.5 * scaleY);
+  }
+
+  private renderLivingTvNekoKitchen(
+    c: CanvasRenderingContext2D,
+    W: number,
+    H: number,
+    scaleX: number,
+    scaleY: number,
+    t: number
+  ): void {
+    c.save();
+    c.scale(scaleX, scaleY);
+    c.imageSmoothingEnabled = false;
+
+    // 1. Warm pastel striped kitchen studio backdrop
+    for (let sx = 0; sx < W; sx += 16) {
+      c.fillStyle = (sx / 16) % 2 === 0 ? '#fce3c2' : '#f7d4b2';
+      c.fillRect(sx, 16, 16, 84);
+    }
+
+    // Cute wall shelf with jam jars
+    c.fillStyle = '#9e6238';
+    c.fillRect(22, 46, 62, 5);
+    c.fillStyle = '#e84d78';
+    c.fillRect(30, 34, 10, 12);
+    c.fillStyle = '#53b870';
+    c.fillRect(46, 36, 10, 10);
+    c.fillStyle = '#f2b830';
+    c.fillRect(62, 33, 10, 13);
+
+    // 2. Cheerful pixel calico cat chef behind counter
+    const bob = Math.round(Math.abs(Math.sin(t * 4.6)) * 3);
+    const cx = 128;
+    const cy = 62 - bob;
+    // Chef toque hat
+    c.fillStyle = '#24182b';
+    c.fillRect(cx - 12, cy - 22, 24, 15);
+    c.fillStyle = '#f7f8fc';
+    c.fillRect(cx - 10, cy - 20, 20, 12);
+    c.fillRect(cx - 13, cy - 17, 26, 7);
+    // Cat head & ears
+    c.fillStyle = '#24182b';
+    c.fillRect(cx - 15, cy - 8, 30, 24);
+    c.fillStyle = '#fff5e6';
+    c.fillRect(cx - 13, cy - 6, 26, 20);
+    // Orange calico patch
+    c.fillStyle = '#f08a35';
+    c.fillRect(cx - 13, cy - 6, 10, 10);
+    // Eyes & happy mouth
+    c.fillStyle = '#24182b';
+    c.fillRect(cx - 7, cy + 2, 3, 3);
+    c.fillRect(cx + 4, cy + 2, 3, 3);
+    c.fillStyle = '#f26d99';
+    c.fillRect(cx - 10, cy + 6, 3, 2);
+    c.fillRect(cx + 7, cy + 6, 3, 2);
+    c.fillRect(cx - 2, cy + 7, 4, 2);
+    // Apron torso
+    c.fillStyle = '#ff6b98';
+    c.fillRect(cx - 14, cy + 16, 28, 22);
+    c.fillStyle = '#fff5e6';
+    c.fillRect(cx - 8, cy + 20, 16, 16);
+
+    // 3. Frying pan & flipping golden star pancake!
+    const flipCycle = (t * 1.1) % 2.2;
+    const flipArc = flipCycle < 0.85 ? Math.sin((flipCycle / 0.85) * Math.PI) : 0;
+    const panX = 166;
+    const panY = 92;
+    c.fillStyle = '#2a2638';
+    c.fillRect(panX - 18, panY, 34, 6);
+    c.fillRect(panX - 30, panY + 1, 14, 3);
+    // Golden pancake
+    const cakeY = Math.round(panY - 6 - flipArc * 30);
+    c.fillStyle = '#a85a12';
+    c.fillRect(panX - 12, cakeY - 1, 22, 7);
+    c.fillStyle = '#f7be38';
+    c.fillRect(panX - 11, cakeY, 20, 5);
+    c.fillStyle = '#fff2a6';
+    c.fillRect(panX - 3, cakeY + 1, 5, 2);
+
+    // Rising cozy steam wisps
+    for (let si = 0; si < 3; si++) {
+      const sp = (t * 0.8 + si * 0.33) % 1;
+      const sx = panX - 6 + si * 6 + Math.round(Math.sin(t * 4 + si) * 2);
+      const sy = Math.round(panY - 12 - sp * 24);
+      c.fillStyle = 'rgba(255, 250, 240, 0.85)';
+      c.fillRect(sx, sy, 2, 4);
+    }
+
+    // 4. Kitchen counter + pastel weather ticker footer
+    c.fillStyle = '#c47b47';
+    c.fillRect(0, 98, W, 24);
+    c.fillStyle = '#e09960';
+    c.fillRect(0, 98, W, 4);
+    c.fillStyle = '#2d2042';
+    c.fillRect(0, 122, W, 22);
+
+    // Top bar
+    c.fillStyle = 'rgba(42, 24, 54, 0.86)';
+    c.fillRect(0, 0, W, 16);
+    c.fillStyle = '#ff9c66';
+    c.fillRect(0, 15, W, 1);
+    c.restore();
+
+    c.font = 'bold 17px monospace';
+    c.textAlign = 'left';
+    c.fillStyle = '#ffe588';
+    c.fillText('SUNNY 22°C  ★ PANCAKE TIME!', 10 * scaleX, 136 * scaleY);
+    c.fillStyle = '#ffd6eb';
+    c.fillText('CHEF MIMI LIVE', 10 * scaleX, 11.5 * scaleY);
+    c.textAlign = 'right';
+    c.fillStyle = '#ffcf7a';
+    c.fillText('♪ NEKO KITCHEN', (W - 6) * scaleX, 11.5 * scaleY);
+  }
+
+  private renderLivingTvSwitchOverlay(
+    c: CanvasRenderingContext2D,
+    rawW: number,
+    rawH: number,
+    channel: number,
+    flashTimer: number
+  ): void {
+    if (flashTimer <= 0) return;
+    const u = THREE.MathUtils.clamp(flashTimer / 0.42, 0, 1);
+    // Crisp retro horizontal static/scanline wipe during the first half of channel change
+    if (u > 0.35) {
+      const staticAlpha = (u - 0.35) / 0.65;
+      c.fillStyle = `rgba(215, 232, 255, ${(staticAlpha * 0.42).toFixed(3)})`;
+      for (let y = 0; y < rawH; y += 8) {
+        if (((y / 8) + Math.floor(flashTimer * 40)) % 2 === 0) {
+          c.fillRect(0, y, rawW, 4);
+        }
+      }
+    }
+    // Classic bright-green CRT channel OSD badge
+    c.fillStyle = 'rgba(12, 22, 18, 0.78)';
+    c.fillRect(rawW - 112, 38, 96, 30);
+    c.font = 'bold 20px monospace';
+    c.textAlign = 'center';
+    c.fillStyle = '#62ff9a';
+    c.fillText(`CH-0${channel + 1}`, rawW - 64, 59);
   }
 
   // =========================================================================
@@ -6634,6 +7110,15 @@ export class ApartmentEngine {
   public setHeroineSpawned(spawned: boolean): void {
     if (!spawned) {
       this.heroineEncounterActive = false;
+      this.ambientMurmurTimer = 0;
+      if (this.sofaSitState !== 'none') {
+        this.sofaSitState = 'none';
+        this.playerFeetPos.copy(this.sofaSavedStandPos);
+        this.callbacks.onSofaCoSitChange?.({
+          active: false,
+          tvOn: this.ctx.metaState.livingTv.isOn,
+        });
+      }
       this.floatingSubtitles?.clearImmediate();
     }
     this.vrmAvatar?.setHeroineSpawned(spawned);
@@ -6660,35 +7145,301 @@ export class ApartmentEngine {
   public setHeroinePoseTuner(state: HeroinePoseTunerState | null): void {
     if (state !== null) {
       this.heroineEncounterActive = false;
+      this.ambientMurmurTimer = 0;
+      if (this.sofaSitState !== 'none') {
+        this.sofaSitState = 'none';
+        this.playerFeetPos.copy(this.sofaSavedStandPos);
+        this.callbacks.onSofaCoSitChange?.({
+          active: false,
+          tvOn: this.ctx.metaState.livingTv.isOn,
+        });
+      }
       this.floatingSubtitles.clearImmediate();
     }
     this.vrmAvatar?.heroine.setPoseTunerState(state, this.playerFeetPos);
   }
 
-  private canTriggerHeroinePrompt(): boolean {
+  private computeHeroinePromptKind(): 'bed' | 'chat' | 'sofa' | null {
     const heroine = this.vrmAvatar?.heroine;
     if (
       !heroine ||
       !heroine.hasVrm() ||
       !heroine.isSpawned() ||
-      !heroine.isSeated() ||
       heroine.isPoseTuning() ||
       this.heroineEncounterActive ||
+      this.sofaSitState !== 'none' ||
       this.viewMode !== 'first-person' ||
       this.pcFocusState !== 'none' ||
-      this.glitchCutscene !== null ||
-      this.currentRoom !== 'bedroom'
+      this.glitchCutscene !== null
     ) {
-      return false;
+      return null;
     }
-    return heroine.getDistanceToWorldPoint(this.playerFeetPos) < 3.45;
+
+    // 1. First-time bedroom bed-edge encounter
+    if (this.currentRoom === 'bedroom' && heroine.isSeated()) {
+      return heroine.getDistanceToWorldPoint(this.playerFeetPos) < 3.45 ? 'bed' : null;
+    }
+
+    // 2. Post-dialogue Living Room sofa co-sitting vs routine chat
+    if (heroine.isFollowingPlayer()) {
+      const distToHeroine = heroine.getDistanceToWorldPoint(this.playerFeetPos);
+
+      // Check if standing near Living Room main sofa and facing toward it
+      if (this.currentRoom === 'living') {
+        const distToSofaFront = Math.hypot(
+          this.playerFeetPos.x - 2.95,
+          this.playerFeetPos.z - (-5.25)
+        );
+        if (distToSofaFront < 2.65 && this.playerFeetPos.x < 4.55) {
+          this.camera.getWorldDirection(this.toyGunAimDirScratch);
+          this.toyGunToHeroineScratch
+            .set(2.45 - this.camera.position.x, 0.55 - this.camera.position.y, -5.25 - this.camera.position.z)
+            .normalize();
+          const sofaDot = this.toyGunAimDirScratch.dot(this.toyGunToHeroineScratch);
+
+          heroine.getHeadWorldPosition(this.encounterHeadPosScratch);
+          this.toyGunToHeroineScratch
+            .subVectors(this.encounterHeadPosScratch, this.camera.position)
+            .normalize();
+          const heroineDot = this.toyGunAimDirScratch.dot(this.toyGunToHeroineScratch);
+
+          if (sofaDot > 0.58 && (distToHeroine > 2.85 || sofaDot >= heroineDot - 0.08)) {
+            return 'sofa';
+          }
+        }
+      }
+
+      if (distToHeroine < 3.05) {
+        return 'chat';
+      }
+    }
+
+    return null;
+  }
+
+  public startSofaCoSit(): void {
+    const heroine = this.vrmAvatar?.heroine;
+    if (
+      !heroine ||
+      !heroine.hasVrm() ||
+      !heroine.isSpawned() ||
+      this.sofaSitState !== 'none' ||
+      this.heroineEncounterActive
+    ) {
+      return;
+    }
+
+    this.ambientMurmurTimer = 0;
+    this.floatingSubtitles.dropCurrentLine();
+    this.hoveredTarget = null;
+    this.callbacks.onHoverTarget(null);
+    if (this.viewMode !== 'first-person') {
+      this.setViewMode('first-person');
+    }
+
+    // Release pointer lock cleanly so the player can immediately click sofa buttons or the TV,
+    // while still being able to drag-look freely around the living room!
+    if (document.pointerLockElement === this.renderer.domElement) {
+      document.exitPointerLock?.();
+    }
+
+    // Record clean unobstructed standing spot in the living room walkway in front of the sofa
+    this.sofaSavedStandPos.set(
+      3.48,
+      0,
+      THREE.MathUtils.clamp(this.playerFeetPos.z, -6.2, -4.1)
+    );
+    this.sofaSavedStandYaw = this.yaw;
+    this.sofaSavedStandPitch = this.pitch;
+    this.sofaCamPos.copy(this.camera.position);
+    this.sofaSitState = 'sitting';
+    this.sofaStateElapsed = 0;
+    this.keys = {};
+
+    const tvOn = this.ctx.metaState.livingTv.isOn;
+    heroine.setSofaTvIsOn(tvOn);
+    heroine.beginSitOnLivingSofa(
+      new THREE.Vector3(2.68, 0, -5.68),
+      new THREE.Vector3(3.48, 0, -5.68),
+      0.495,
+      Math.PI / 2,
+      new THREE.Vector3(6.74, 1.28, -5.08),
+      () => {
+        if (!this.heroineEncounterActive && this.sofaSitState !== 'none') {
+          heroine.triggerSofaBriefReaction(
+            {
+              expression: 'happy',
+              gesture: 'idle',
+              blush: 0.24,
+              headTilt: 0.06,
+              leanForward: 0.04,
+            },
+            3.6
+          );
+          this.showAmbientHeroineMurmur('哇，沙发好软呀～要不要顺便把电视打开看看？', 4.2, true);
+        }
+      }
+    );
+
+    this.audio.playInteract(false);
+    this.callbacks.onSofaCoSitChange?.({ active: true, tvOn });
+  }
+
+  public standUpFromSofaCoSit(): void {
+    if (this.sofaSitState === 'none' || this.sofaSitState === 'standing') return;
+    if (this.heroineEncounterActive) {
+      this.finishRoutineHeroineChat();
+    }
+    this.ambientMurmurTimer = 0;
+    this.floatingSubtitles.dropCurrentLine();
+    this.sofaSitState = 'standing';
+    this.sofaStateElapsed = 0;
+    this.vrmAvatar?.heroine.beginStandUpFromLivingSofa(new THREE.Vector3(3.48, 0, -5.68));
+    this.audio.playInteract(false);
+    this.callbacks.onSofaCoSitChange?.({
+      active: false,
+      tvOn: this.ctx.metaState.livingTv.isOn,
+    });
+  }
+
+  private applyLivingTvMaterialState(isOn: boolean): void {
+    const mat = this.ctx.metaState.tvScreenMat;
+    if (!mat) return;
+    const tv = this.ctx.metaState.livingTv;
+    const activeTex = isOn && tv.texture ? tv.texture : this.textures.tvStandby;
+    // Darken diffuse albedo when ON so daylight sun/hemi doesn't double-expose the emissive LCD,
+    // and cap emissiveIntensity strictly below UnrealBloomPass threshold (0.72) for razor-sharp clarity!
+    mat.color.setHex(isOn ? 0x101018 : 0xffffff);
+    mat.map = activeTex;
+    mat.emissiveMap = activeTex;
+    mat.emissive.setHex(isOn ? 0xffffff : 0xffe8d6);
+    mat.emissiveIntensity = isOn ? 0.62 : 0.16;
+    mat.roughness = isOn ? 0.42 : 0.56;
+    mat.envMapIntensity = isOn ? 0.03 : 0.06;
+    mat.needsUpdate = true;
+  }
+
+  public toggleLivingRoomTv(): boolean {
+    const tv = this.ctx.metaState.livingTv;
+    const nextOn = !tv.isOn;
+    tv.isOn = nextOn;
+    this.ctx.metaState.tvMetaOn = nextOn;
+    this.applyLivingTvMaterialState(nextOn);
+    if (tv.ledMat) {
+      tv.ledMat.color.setHex(nextOn ? 0x52ff9a : 0xff5268);
+    }
+    if (nextOn) {
+      tv.accum = 1.0;
+      tv.channelTimer = 0;
+      tv.switchFlashTimer = 0.36;
+    }
+    this.audio.playInteract(true);
+    this.vrmAvatar?.heroine.setSofaTvIsOn(nextOn);
+    if (this.sofaSitState !== 'none') {
+      this.callbacks.onSofaCoSitChange?.({ active: true, tvOn: nextOn });
+      if (!this.heroineEncounterActive) {
+        if (nextOn) {
+          this.vrmAvatar?.heroine.triggerSofaBriefReaction(
+            {
+              expression: 'happy',
+              gesture: 'talk_lively',
+              blush: 0.28,
+              headTilt: 0.08,
+              leanForward: 0.08,
+            },
+            4.5
+          );
+          this.showAmbientHeroineMurmur('哇，这个像素小人蹦得好可爱！我们就这么窝在沙发上看一会儿吧～', 4.6, true);
+        } else {
+          this.vrmAvatar?.heroine.triggerSofaBriefReaction(
+            {
+              expression: 'relaxed',
+              gesture: 'idle',
+              blush: 0.26,
+              headTilt: -0.05,
+              leanForward: 0.04,
+            },
+            4.0
+          );
+          this.showAmbientHeroineMurmur('关掉电视以后客厅好安静呀……只听见我们俩的声音呢。', 4.2, true);
+        }
+      }
+    }
+    this.shadowDirty = true;
+    return nextOn;
+  }
+
+  public switchLivingRoomTvChannel(manual = true): number {
+    const tv = this.ctx.metaState.livingTv;
+    if (!tv.isOn) {
+      if (manual) {
+        this.toggleLivingRoomTv();
+      }
+      return tv.channel;
+    }
+    tv.channel = (tv.channel + 1) % 3;
+    tv.channelTimer = 0;
+    tv.switchFlashTimer = 0.42;
+    tv.accum = 1.0;
+    if (manual) {
+      this.audio.playInteract(true);
+    }
+    this.vrmAvatar?.heroine.notifySofaTvProgramSwitch();
+    return tv.channel;
+  }
+
+  public getHeroineIntimacy(): number {
+    return this.heroineIntimacy;
+  }
+
+  public adjustHeroineIntimacy(delta: number, minFloor = 0): number {
+    const next = THREE.MathUtils.clamp(this.heroineIntimacy + delta, minFloor, 100);
+    this.heroineIntimacy = next;
+    this.vrmAvatar?.heroine.setIntimacy(next);
+    try {
+      window.localStorage.setItem('twilight_ark_heroine_intimacy_v1', String(Math.round(next)));
+    } catch {
+      // Ignore storage quota / privacy mode errors
+    }
+    return next;
+  }
+
+  private loadPersistedHeroineIntimacy(): void {
+    try {
+      const raw = window.localStorage.getItem('twilight_ark_heroine_intimacy_v1');
+      if (raw !== null) {
+        const parsed = Number(raw);
+        if (Number.isFinite(parsed)) {
+          this.heroineIntimacy = THREE.MathUtils.clamp(parsed, 0, 100);
+        }
+      }
+    } catch {
+      // Keep default intimacy
+    }
+  }
+
+  public isLivingRoomTvOn(): boolean {
+    return this.ctx.metaState.livingTv.isOn;
+  }
+
+  public isSofaCoSeated(): boolean {
+    return this.sofaSitState === 'sitting' || this.sofaSitState === 'seated';
+  }
+
+  public showAmbientHeroineMurmur(text: string, durationSec = 3.8, hearts = false): void {
+    if (this.heroineEncounterActive) return;
+    this.floatingSubtitles.showLine(text, { hearts });
+    this.ambientMurmurTimer = durationSec;
   }
 
   public startHeroineEncounter(onArrived: () => void): void {
     const heroine = this.vrmAvatar?.heroine;
     if (!heroine || !heroine.hasVrm() || !heroine.isSpawned()) return;
 
+    this.ambientMurmurTimer = 0;
     this.heroineEncounterActive = true;
+    this.encounterIsMainBedroom = true;
+    this.encounterInactivityTimer = 0;
     this.hoveredTarget = null;
     this.callbacks.onHoverTarget(null);
     if (this.viewMode !== 'first-person') {
@@ -6698,7 +7449,45 @@ export class ApartmentEngine {
     heroine.beginStandUpAndApproach(this.playerFeetPos, onArrived);
   }
 
+  public notifyEncounterPlayerInteraction(): void {
+    this.encounterInactivityTimer = 0;
+    const heroine = this.vrmAvatar?.heroine;
+    if (heroine && heroine.isBedroomIdleChairWaiting()) {
+      heroine.exitBedroomIdleChairWait();
+    }
+  }
+
+  public startRoutineHeroineChat(): void {
+    const heroine = this.vrmAvatar?.heroine;
+    if (!heroine || !heroine.hasVrm() || !heroine.isSpawned()) return;
+
+    this.ambientMurmurTimer = 0;
+    this.heroineEncounterActive = true;
+    this.encounterIsMainBedroom = false;
+    this.encounterInactivityTimer = 0;
+    this.hoveredTarget = null;
+    this.callbacks.onHoverTarget(null);
+    if (this.viewMode !== 'first-person') {
+      this.setViewMode('first-person');
+    }
+    this.audio.playInteract(false);
+    heroine.beginRoutineChat();
+  }
+
+  public finishRoutineHeroineChat(): void {
+    this.heroineEncounterActive = false;
+    this.ambientMurmurTimer = 0;
+    this.floatingSubtitles.dropCurrentLine();
+    this.adjustHeroineIntimacy(6);
+    this.vrmAvatar?.heroine.endRoutineChat(this.playerFeetPos);
+    if (this.heroineTypingReported) {
+      this.heroineTypingReported = false;
+      this.callbacks.onHeroineTypingChange?.(false);
+    }
+  }
+
   public showHeroineSubtitle(text: string, options?: ShowSubtitleOptions): void {
+    this.ambientMurmurTimer = 0;
     this.floatingSubtitles.showLine(text, options);
     this.heroineTypingReported = true;
     this.callbacks.onHeroineTypingChange?.(true);
@@ -6735,7 +7524,11 @@ export class ApartmentEngine {
 
   public finishHeroineEncounter(): void {
     this.heroineEncounterActive = false;
+    this.encounterIsMainBedroom = false;
+    this.encounterInactivityTimer = 0;
+    this.ambientMurmurTimer = 0;
     this.floatingSubtitles.dropCurrentLine();
+    this.adjustHeroineIntimacy(Math.max(10, 62 - this.heroineIntimacy));
     this.vrmAvatar?.heroine.setSpeaking(false);
     this.vrmAvatar?.heroine.setPerformanceCue({
       expression: 'neutral',
@@ -6754,11 +7547,26 @@ export class ApartmentEngine {
 
   public resetHeroineToBed(): void {
     this.heroineEncounterActive = false;
+    this.encounterIsMainBedroom = false;
+    this.encounterInactivityTimer = 0;
+    this.ambientMurmurTimer = 0;
+    if (this.sofaSitState !== 'none') {
+      this.sofaSitState = 'none';
+      this.playerFeetPos.copy(this.sofaSavedStandPos);
+      this.callbacks.onSofaCoSitChange?.({
+        active: false,
+        tvOn: this.ctx.metaState.livingTv.isOn,
+      });
+    }
     this.floatingSubtitles?.clearImmediate();
     this.vrmAvatar?.heroine.resetToBedroomBed();
     if (this.heroineNearReported) {
       this.heroineNearReported = false;
       this.callbacks.onHeroineProximityChange?.(false);
+    }
+    if (this.heroinePromptKindReported !== null) {
+      this.heroinePromptKindReported = null;
+      this.callbacks.onHeroinePromptChange?.(null);
     }
     if (this.heroineTypingReported) {
       this.heroineTypingReported = false;
@@ -6790,11 +7598,106 @@ export class ApartmentEngine {
     const heroine = this.vrmAvatar?.heroine;
     const hasHeroine = Boolean(heroine && heroine.hasVrm() && heroine.isSpawned());
 
-    // 1. Proximity state notification for minimalist 3D floating prompt
-    const canPrompt = this.canTriggerHeroinePrompt();
+    // Keep heroine's TV awareness synced even if user toggled TV directly on screen
+    if (hasHeroine && heroine) {
+      heroine.setSofaTvIsOn(this.ctx.metaState.livingTv.isOn);
+    }
+
+    // Auto-fade non-blocking ambient murmurs (toy gun reaction / sofa TV reaction)
+    if (this.ambientMurmurTimer > 0 && !this.heroineEncounterActive) {
+      this.ambientMurmurTimer = Math.max(0, this.ambientMurmurTimer - dt);
+      if (this.ambientMurmurTimer <= 0) {
+        this.floatingSubtitles.dropCurrentLine();
+      }
+    }
+    if (this.toyGunMurmurCooldown > 0) {
+      this.toyGunMurmurCooldown = Math.max(0, this.toyGunMurmurCooldown - dt);
+    }
+    if (this.sofaMicroMurmurCooldown > 0) {
+      this.sofaMicroMurmurCooldown = Math.max(0, this.sofaMicroMurmurCooldown - dt);
+    }
+
+    // Passive intimacy growth while cozily watching TV together on the sofa
+    if (
+      hasHeroine &&
+      heroine &&
+      this.sofaSitState === 'seated' &&
+      this.ctx.metaState.livingTv.isOn &&
+      !this.heroineEncounterActive
+    ) {
+      this.sofaIntimacyTickAccum += dt;
+      if (this.sofaIntimacyTickAccum >= 10) {
+        this.sofaIntimacyTickAccum -= 10;
+        this.adjustHeroineIntimacy(1.5);
+      }
+      const fsmNotice = heroine.consumeSofaTvBehaviorNotice();
+      if (fsmNotice && this.sofaMicroMurmurCooldown <= 0 && this.ambientMurmurTimer <= 0.1) {
+        if (fsmNotice.state === 'shoulder_rest') {
+          this.sofaMicroMurmurCooldown = 20;
+          this.showAmbientHeroineMurmur('借你的肩膀靠一会儿……嗯，好暖和呀～', 4.4, true);
+        } else if (fsmNotice.state === 'adjust_posture' && fsmNotice.fromProgramSwitch) {
+          const lines = [
+            '咦，换到这个节目啦？',
+            '嗯？这个频道看着挺有意思的呢～',
+            '换个舒服点的坐姿继续看吧～',
+          ];
+          const line = lines[this.sofaProgramSwitchMurmurIdx % lines.length];
+          this.sofaProgramSwitchMurmurIdx += 1;
+          this.sofaMicroMurmurCooldown = 11;
+          this.showAmbientHeroineMurmur(line, 3.2, false);
+        } else if (fsmNotice.state === 'scoot_closer') {
+          this.sofaMicroMurmurCooldown = 20;
+          this.showAmbientHeroineMurmur('稍微往你这边靠一点，一起看更开心呢～', 4.0, true);
+        } else if (fsmNotice.state === 'side_glance_smile') {
+          this.sofaMicroMurmurCooldown = 22;
+          this.showAmbientHeroineMurmur('看你看得这么认真，忍不住想多瞧你两眼～', 3.8, true);
+        }
+      }
+    } else if (hasHeroine && heroine) {
+      this.sofaIntimacyTickAccum = 0;
+      heroine.consumeSofaTvBehaviorNotice();
+    }
+
+    // Auto-chair waiting during unfinished bedroom encounter:
+    // If the player walks out of the bedroom OR doesn't interact for >10s, she walks to the
+    // bedroom swivel chair, sits down, and passes the time with cute little fidgets!
+    if (
+      hasHeroine &&
+      heroine &&
+      this.heroineEncounterActive &&
+      this.encounterIsMainBedroom &&
+      !heroine.isPoseTuning()
+    ) {
+      if (this.currentRoom !== 'bedroom') {
+        if (!heroine.isBusyWithStageAction() && !heroine.isBedroomIdleChairWaiting()) {
+          heroine.enterBedroomIdleChairWait(this.playerFeetPos);
+        }
+      } else if (
+        !heroine.isBusyWithStageAction() &&
+        !this.floatingSubtitles.isCurrentlyTyping() &&
+        !heroine.isBedroomIdleChairWaiting()
+      ) {
+        this.encounterInactivityTimer += dt;
+        if (this.encounterInactivityTimer >= 10.0) {
+          heroine.enterBedroomIdleChairWait(this.playerFeetPos);
+        }
+      } else if (this.floatingSubtitles.isCurrentlyTyping()) {
+        this.encounterInactivityTimer = 0;
+      }
+    } else {
+      this.encounterInactivityTimer = 0;
+    }
+
+    // 1. Contextual proximity prompt ('bed' | 'chat' | 'sofa' | null)
+    const promptKind = this.computeHeroinePromptKind();
+    const canPrompt = promptKind !== null;
     if (canPrompt !== this.heroineNearReported) {
       this.heroineNearReported = canPrompt;
       this.callbacks.onHeroineProximityChange?.(canPrompt);
+    }
+    if (promptKind !== this.heroinePromptKindReported) {
+      this.heroinePromptKindReported = promptKind;
+      this.callbacks.onHeroinePromptChange?.(promptKind);
     }
 
     if (!hasHeroine || !heroine) {
@@ -6804,9 +7707,89 @@ export class ApartmentEngine {
 
     heroine.getHeadWorldPosition(this.encounterHeadPosScratch);
 
+    // 1.5 Per-frame Toy-Gun Aim Detection (eye-shut defensive flinch -> micro-pout)
+    const heroineVisible = heroine.root.visible;
+    const gunEquipped =
+      this.getEquippedItem()?.id === 'toy_gun' &&
+      this.viewMode === 'first-person' &&
+      !this.inputSuspended &&
+      this.pcFocusState === 'none' &&
+      this.glitchCutscene === null &&
+      !heroine.isPoseTuning() &&
+      heroineVisible;
+
+    let rawAimedAtHeroine = false;
+    if (gunEquipped) {
+      this.camera.getWorldDirection(this.toyGunAimDirScratch);
+      // Test both head/face AND upper chest so aiming anywhere at her upper body registers reliably
+      this.toyGunToHeroineScratch.set(
+        this.encounterHeadPosScratch.x - this.camera.position.x,
+        this.encounterHeadPosScratch.y - 0.04 - this.camera.position.y,
+        this.encounterHeadPosScratch.z - this.camera.position.z
+      );
+      const distToHead = this.toyGunToHeroineScratch.length();
+      if (distToHead > 0.30 && distToHead < 6.2) {
+        this.toyGunToHeroineScratch.divideScalar(distToHead);
+        const dotHead = this.toyGunAimDirScratch.dot(this.toyGunToHeroineScratch);
+
+        this.toyGunChestScratch
+          .set(
+            this.encounterHeadPosScratch.x - this.camera.position.x,
+            this.encounterHeadPosScratch.y - 0.28 - this.camera.position.y,
+            this.encounterHeadPosScratch.z - this.camera.position.z
+          )
+          .normalize();
+        const dotChest = this.toyGunAimDirScratch.dot(this.toyGunChestScratch);
+
+        if (Math.max(dotHead, dotChest) > 0.915) {
+          // Raycast toward her head (always clear of bed/sofa/chair furniture colliders!)
+          const wallHit = this.collisions.raycastAll(
+            this.camera.position.x,
+            this.camera.position.y,
+            this.camera.position.z,
+            this.toyGunToHeroineScratch.x,
+            this.toyGunToHeroineScratch.y,
+            this.toyGunToHeroineScratch.z,
+            distToHead,
+            _projTarget,
+            _projNormal
+          );
+          if (wallHit < 0 || wallHit >= distToHead - 0.60) {
+            rawAimedAtHeroine = true;
+          }
+        }
+      }
+    }
+
+    if (rawAimedAtHeroine) {
+      this.toyGunAimGraceTimer = 0.45;
+    } else if (!gunEquipped) {
+      this.toyGunAimGraceTimer = 0;
+    } else if (this.toyGunAimGraceTimer > 0) {
+      this.toyGunAimGraceTimer = Math.max(0, this.toyGunAimGraceTimer - dt);
+    }
+
+    const aimedAtHeroine = rawAimedAtHeroine || this.toyGunAimGraceTimer > 0;
+    const gunSignal = heroine.setToyGunAimedAt(aimedAtHeroine, false);
+    if (
+      gunSignal === 'pout_start' &&
+      !this.heroineEncounterActive &&
+      this.toyGunMurmurCooldown <= 0
+    ) {
+      const murmurs = [
+        '唔……别拿玩具枪指着我啦，会吓一跳的嘛……',
+        '呜，就算只是软弹玩具枪……对着我也还是会怕的呀……',
+        '坏蛋……干嘛老拿玩具枪吓唬我啦。',
+      ];
+      const text = murmurs[this.toyGunMurmurIndex % murmurs.length];
+      this.toyGunMurmurIndex += 1;
+      this.toyGunMurmurCooldown = 6.5;
+      this.adjustHeroineIntimacy(-2, 25);
+      this.showAmbientHeroineMurmur(text, 3.8, false);
+    }
+
     // 2. Player camera & movement remain 100% free during encounter — no camera hijacking!
     // 3. Update true 3D world-space floating & falling subtitle sprites (always billboarded to camera)
-    const heroineVisible = heroine.root.visible;
     this.floatingSubtitles.group.visible =
       heroineVisible && this.floatingSubtitles.hasVisibleSprites();
     if (this.floatingSubtitles.hasVisibleSprites()) {
@@ -6833,12 +7816,20 @@ export class ApartmentEngine {
         .setFromMatrixColumn(this.camera.matrixWorld, 2)
         .normalize();
 
-      // Prompt anchor: floats gently to the right of her shoulder when seated/standing nearby
-      this.encounterAnchorScratch
-        .copy(this.encounterHeadPosScratch)
-        .addScaledVector(this.encounterCamRightScratch, 0.34)
-        .addScaledVector(this.encounterCamUpScratch, -0.04 + Math.sin(elapsed * 2.1) * 0.012)
-        .addScaledVector(this.encounterCamFwdScratch, 0.06);
+      // Prompt anchor: floats above living room sofa when offering sofa co-sit, else beside her shoulder
+      if (promptKind === 'sofa') {
+        this.encounterAnchorScratch.set(
+          2.55,
+          1.02 + Math.sin(elapsed * 2.1) * 0.015,
+          -5.25
+        );
+      } else {
+        this.encounterAnchorScratch
+          .copy(this.encounterHeadPosScratch)
+          .addScaledVector(this.encounterCamRightScratch, 0.34)
+          .addScaledVector(this.encounterCamUpScratch, -0.04 + Math.sin(elapsed * 2.1) * 0.012)
+          .addScaledVector(this.encounterCamFwdScratch, 0.06);
+      }
       const promptProj = this.projectWorldPointToScreen(
         this.encounterAnchorScratch,
         vw,
@@ -6989,6 +7980,28 @@ export class ApartmentEngine {
         // Within ~16 degrees of center crosshair: softly guide net toward airplane
         if (_projStep.dot(rayD) > 0.96) {
           _projDir.subVectors(planePos, _projOrigin).normalize();
+        }
+      }
+    }
+
+    // If player fires the toy gun toward the heroine, trigger immediate flinch reaction!
+    const heroine = this.vrmAvatar?.heroine;
+    if (heroine && heroine.hasVrm() && heroine.isSpawned() && heroine.root.visible) {
+      heroine.getHeadWorldPosition(this.encounterHeadPosScratch);
+      this.toyGunToHeroineScratch.set(
+        this.encounterHeadPosScratch.x - rayO.x,
+        this.encounterHeadPosScratch.y - 0.16 - rayO.y,
+        this.encounterHeadPosScratch.z - rayO.z
+      );
+      const distToH = this.toyGunToHeroineScratch.length();
+      if (distToH > 0.3 && distToH < 5.8) {
+        this.toyGunToHeroineScratch.divideScalar(distToH);
+        if (this.toyGunToHeroineScratch.dot(rayD) > 0.93) {
+          heroine.setToyGunAimedAt(true, true);
+          if (!this.heroineEncounterActive && this.toyGunMurmurCooldown <= 0) {
+            this.toyGunMurmurCooldown = 5.0;
+            this.showAmbientHeroineMurmur('呀！真开枪啦……好坏哦，明明知道我会吓一跳的！', 3.8, false);
+          }
         }
       }
     }

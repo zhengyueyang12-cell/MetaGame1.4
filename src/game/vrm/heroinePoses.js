@@ -28,6 +28,7 @@ export const HEROINE_POSE_LIST = [
   { id: 'lean_curious', label: '好奇前倾', category: 'standing' },
   { id: 'reach_hand', label: '伸手向男主', category: 'standing' },
   { id: 'arms_crossed', label: '双手交叉（抱臂）', category: 'standing' },
+  { id: 'guard_flinch', label: '玩具枪护身退缩', category: 'standing' },
 ];
 
 export const HEROINE_EXPRESSION_LIST = [
@@ -133,14 +134,14 @@ export const DEFAULT_HEROINE_POSES = {
   seated: {
     category: 'seated',
     upperArmOrder: 'YXZ',
-    leftShoulder: [0, 0.06, -0.04],
-    rightShoulder: [0, -0.06, 0.04],
-    leftUpperArm: [-0.18, -0.16, -1.23],
-    rightUpperArm: [-0.18, 0.16, 1.23],
-    leftLowerArm: [0.15, -0.98, -0.35],
-    rightLowerArm: [0.15, 0.98, 0.35],
-    leftHand: [1.04, -0.05, 0.26],
-    rightHand: [1.04, 0.05, -0.26],
+    leftShoulder: [0, 0.06, -0.02],
+    rightShoulder: [0, -0.06, 0.02],
+    leftUpperArm: [-0.24, -0.14, -1.13],
+    rightUpperArm: [-0.24, 0.14, 1.13],
+    leftLowerArm: [0.16, -1.04, -0.18],
+    rightLowerArm: [0.16, 1.04, 0.18],
+    leftHand: [0.82, -0.06, 0.20],
+    rightHand: [0.82, 0.06, -0.20],
     head: [0, 0, 0],
     spineLean: 0,
     leftFingerMode: 'relaxed',
@@ -372,6 +373,25 @@ export const DEFAULT_HEROINE_POSES = {
     spineLean: 0.04,
     leftFingerMode: 'relaxed',
     rightFingerMode: 'relaxed',
+  },
+
+  // 被玩具枪指着时的本能护身姿势：微缩双肩、双小臂自然抬护在胸口前，掌心微外挡
+  guard_flinch: {
+    category: 'standing',
+    upperArmOrder: 'ZYX',
+    armMask: 'both',
+    leftShoulder: [0.06, 0.10, 0.08],
+    rightShoulder: [0.06, -0.10, -0.08],
+    leftUpperArm: [0.46, -0.52, -0.84],
+    rightUpperArm: [0.46, 0.52, 0.84],
+    leftLowerArm: [-0.26, -1.88, 0.0],
+    rightLowerArm: [0.26, 1.88, 0.0],
+    leftHand: [0.20, -0.16, 0.18],
+    rightHand: [0.20, 0.16, -0.18],
+    head: [0.08, -0.22, -0.13],
+    spineLean: -0.08,
+    leftFingerMode: 'open',
+    rightFingerMode: 'open',
   },
 };
 

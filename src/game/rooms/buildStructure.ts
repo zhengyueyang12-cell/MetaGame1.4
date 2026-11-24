@@ -1760,20 +1760,167 @@ export function buildApartmentStructure(ctx: RoomBuildContext): void {
     });
   }
 
-  // Kitchen ceiling drum lamp
-  buildFlushCeilingLamp(
-    'lamp_kitchen',
-    'kitchen',
-    5.25,
-    3.1,
-    3.60,
-    0.22,
-    0xeee4fa,
-    0xf0e8fa,
-    0.88,
-    10.5,
-    4.2
-  );
+  // Kitchen Crafted Honey-Oak Wood, Brushed-Brass & Frosted Opal-Glass Semi-Flush Ceiling Lamp
+  {
+    const kx = 5.25;
+    const ky = 3.10;
+    const kz = 3.60;
+    const kitLamp = new THREE.Group();
+    kitLamp.position.set(kx, ky, kz);
+
+    const kitWoodMat = mat({
+      map: textures.furnitureOak,
+      bumpMap: textures.furnitureWoodBump,
+      bumpScale: 0.005,
+      color: 0xe6bc88,
+      roughness: 0.44,
+      metalness: 0.02,
+      woodLacquer: 0.52,
+    });
+    const kitBrassMat = mat({
+      color: 0xdca452,
+      roughness: 0.24,
+      metalness: 0.86,
+      envMapIntensity: 1.35,
+    });
+    const kitOpalGlassMat = mat({
+      color: 0xfff8ee,
+      emissive: new THREE.Color(0xffe6c4),
+      emissiveIntensity: 0.46,
+      roughness: 0.26,
+      metalness: 0.04,
+      transparent: true,
+      opacity: 0.94,
+    });
+    const kitBulbMat = new THREE.MeshBasicMaterial({ color: 0xfff2dc });
+
+    // Soft ceiling contact shadow halo around mounting canopy
+    const ceilShadow = new THREE.Mesh(
+      new THREE.RingGeometry(0.11, 0.34, 28),
+      new THREE.MeshBasicMaterial({
+        color: 0x1a1424,
+        transparent: true,
+        opacity: 0.14,
+        depthWrite: false,
+      })
+    );
+    ceilShadow.rotation.x = Math.PI / 2;
+    ceilShadow.position.y = -0.003;
+    kitLamp.add(ceilShadow);
+
+    // Stepped turned brushed-brass ceiling canopy & short stem
+    const canopyOuter = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.125, 0.142, 0.026, 24),
+      kitWoodMat
+    );
+    canopyOuter.position.y = -0.014;
+    kitLamp.add(canopyOuter);
+
+    const canopyBrass = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.088, 0.104, 0.022, 20),
+      kitBrassMat
+    );
+    canopyBrass.position.y = -0.036;
+    kitLamp.add(canopyBrass);
+
+    const stem = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.016, 0.016, 0.085, 14),
+      kitBrassMat
+    );
+    stem.position.y = -0.082;
+    kitLamp.add(stem);
+
+    // Sculpted beveled honey-oak wooden outer halo ring (Torus + stepped wooden collar)
+    const woodDrum = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.248, 0.264, 0.072, 28, 1, true),
+      kitWoodMat
+    );
+    woodDrum.material.side = THREE.DoubleSide;
+    woodDrum.position.y = -0.145;
+    outlines.addOutline(woodDrum, 1.022);
+    kitLamp.add(woodDrum);
+
+    for (const [ry, rad] of [
+      [-0.108, 0.248],
+      [-0.181, 0.264],
+    ] as const) {
+      const woodBead = new THREE.Mesh(
+        new THREE.TorusGeometry(rad, 0.011, 10, 28),
+        kitWoodMat
+      );
+      woodBead.rotation.x = Math.PI / 2;
+      woodBead.position.y = ry;
+      kitLamp.add(woodBead);
+    }
+
+    // 4 Radial Brushed-Brass Mounting Brackets connecting stem to wooden shade ring
+    for (let i = 0; i < 4; i++) {
+      const ang = (i * Math.PI) / 2 + Math.PI / 4;
+      const strut = new THREE.Mesh(
+        new THREE.BoxGeometry(0.245, 0.009, 0.014),
+        kitBrassMat
+      );
+      strut.position.set(Math.cos(ang) * 0.125, -0.114, Math.sin(ang) * 0.125);
+      strut.rotation.y = -ang;
+      kitLamp.add(strut);
+
+      const clip = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.008, 0.008, 0.024, 8),
+        kitBrassMat
+      );
+      clip.position.set(Math.cos(ang) * 0.258, -0.145, Math.sin(ang) * 0.258);
+      kitLamp.add(clip);
+    }
+
+    // Stepped frosted opal-glass diffuser dome + warm glowing inner core
+    const diffuserBowl = new THREE.Mesh(
+      new THREE.SphereGeometry(0.232, 24, 14, 0, Math.PI * 2, Math.PI * 0.50, Math.PI * 0.50),
+      kitOpalGlassMat
+    );
+    diffuserBowl.scale.set(1, 0.52, 1);
+    diffuserBowl.position.y = -0.132;
+    kitLamp.add(diffuserBowl);
+
+    const innerGlowCore = new THREE.Mesh(
+      new THREE.SphereGeometry(0.115, 16, 12),
+      kitBulbMat
+    );
+    innerGlowCore.scale.set(1, 0.56, 1);
+    innerGlowCore.position.y = -0.152;
+    kitLamp.add(innerGlowCore);
+
+    // Bottom brass accent ring & turned finial knob
+    const lowerBrassRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.228, 0.006, 8, 28),
+      kitBrassMat
+    );
+    lowerBrassRing.rotation.x = Math.PI / 2;
+    lowerBrassRing.position.y = -0.186;
+    kitLamp.add(lowerBrassRing);
+
+    const finial = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.016, 0.008, 0.028, 12),
+      kitBrassMat
+    );
+    finial.position.y = -0.258;
+    kitLamp.add(finial);
+
+    ceilingGroup.add(kitLamp);
+
+    const kitLight = new THREE.PointLight(0xfff1dc, 0.90 * 0.85, 10.5 * 1.45, 0.90);
+    kitLight.position.set(kx, ky - 0.42, kz);
+    scene.add(kitLight);
+
+    registerCeilingLamp({
+      id: 'lamp_kitchen',
+      room: 'kitchen',
+      position: new THREE.Vector3(kx, ky - 0.14, kz),
+      light: kitLight,
+      bulbMaterials: [kitBulbMat],
+      baseIntensity: 0.90,
+      proximityRadius: 4.2,
+    });
+  }
 
   // Entryway warm Japanese ceiling lantern (mounted on the sculpted Entryway ceiling medallion at Y = 3.20m)
   buildFlushCeilingLamp(

@@ -1404,18 +1404,19 @@ export function buildLivingRoom(
   tvStandbyLed.userData.dynamic = true;
   tvGroup.add(tvStandbyLed);
 
-  // Live crisp 16:9 retro pixel-art CanvasTexture for cozy comical auto-playing TV minigame
+  // Live crisp 16:9 retro pixel-art CanvasTexture (512x288 HiDPI) for cozy comical auto-playing TV minigame
   const tvLiveCanvas = document.createElement('canvas');
-  tvLiveCanvas.width = 256;
-  tvLiveCanvas.height = 144;
+  tvLiveCanvas.width = 512;
+  tvLiveCanvas.height = 288;
   const tvLiveCtx = tvLiveCanvas.getContext('2d');
   if (tvLiveCtx) {
     tvLiveCtx.imageSmoothingEnabled = false;
   }
   const tvLiveTexture = new THREE.CanvasTexture(tvLiveCanvas);
   tvLiveTexture.colorSpace = THREE.SRGBColorSpace;
-  tvLiveTexture.magFilter = THREE.NearestFilter;
-  tvLiveTexture.minFilter = THREE.NearestFilter;
+  tvLiveTexture.magFilter = THREE.LinearFilter;
+  tvLiveTexture.minFilter = THREE.LinearFilter;
+  tvLiveTexture.anisotropy = 4;
   tvLiveTexture.generateMipmaps = false;
 
   metaState.livingTv.isOn = false;
@@ -1598,10 +1599,13 @@ export function buildLivingRoom(
     metaState.livingTv.isOn = nextOn;
     metaState.tvMetaOn = nextOn;
     const activeTex = nextOn && metaState.livingTv.texture ? metaState.livingTv.texture : textures.tvStandby;
+    tvScreenMat.color.setHex(nextOn ? 0x101018 : 0xffffff);
     tvScreenMat.map = activeTex;
     tvScreenMat.emissiveMap = activeTex;
     tvScreenMat.emissive.setHex(nextOn ? 0xffffff : 0xffe8d6);
-    tvScreenMat.emissiveIntensity = nextOn ? 1.05 : 0.18;
+    tvScreenMat.emissiveIntensity = nextOn ? 0.62 : 0.16;
+    tvScreenMat.roughness = nextOn ? 0.42 : 0.56;
+    tvScreenMat.envMapIntensity = nextOn ? 0.03 : 0.06;
     tvScreenMat.needsUpdate = true;
     if (metaState.livingTv.ledMat) {
       metaState.livingTv.ledMat.color.setHex(nextOn ? 0x52ff9a : 0xff5268);
@@ -3794,8 +3798,30 @@ export function buildLivingRoom(
   sofaLegsInst.computeBoundingSphere();
   sofa.add(sofaLegsInst);
 
+  // Invisible sit hit-proxy covering the sofa cushions/backrest (yields to toy gun when aiming right at toy gun)
+  const sofaSitProxy = new THREE.Mesh(
+    new THREE.BoxGeometry(3.26, 0.72, 0.94),
+    new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      colorWrite: false,
+    })
+  );
+  sofaSitProxy.position.set(0, 0.56, 0.02);
+  sofa.add(sofaSitProxy);
+
   group.add(sofa);
   addBoxCollider('col_sofa_main', 2.38, 0.54, -5.25, 1.18, 1.06, 3.62);
+
+  registerInteractable(
+    'living_sofa',
+    '客厅沙发',
+    '一起坐到沙发上',
+    'living',
+    sofaSitProxy,
+    () => undefined
+  );
 
   // =========================================================================
   // 8B. TWO-TIER WOODEN SOFA END TABLE + LIME-GREEN ARTICULATED DESK LAMP
