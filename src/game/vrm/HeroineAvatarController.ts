@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {
   MToonMaterial,
   VRM,
+  VRMExpressionMorphTargetBind,
   VRMLoaderPlugin,
   VRMSpringBoneCollider,
   VRMSpringBoneColliderShapeCapsule,
@@ -216,6 +217,21 @@ const HEAD_TRACKED_BONES = new Set<VRMHumanBoneName>([
   'rightEye',
 ]);
 
+interface StandUpFootworkState {
+  hipRoll: number;
+  leftHipPitchAdd: number;
+  rightHipPitchAdd: number;
+  leftKneeAdd: number;
+  rightKneeAdd: number;
+  leftAnklePitch: number;
+  rightAnklePitch: number;
+  leftAnkleRoll: number;
+  rightAnkleRoll: number;
+  leftToesPitch: number;
+  rightToesPitch: number;
+  armPushBrace: number;
+}
+
 export class HeroineAvatarController {
   public readonly root: THREE.Group;
   public readonly lookAtTarget: THREE.Object3D;
@@ -259,14 +275,31 @@ export class HeroineAvatarController {
   private cheekBlushTex: THREE.CanvasTexture | null = null;
 
   private vrmStandingHipsHeight = 0.88;
+  private vrmStandingFootHeight = 0.08;
+  private vrmStandingToesHeight = 0.025;
+  private hasStandingToesBone = false;
+  private smileBlockedMouthMorphs: Array<{ mesh: THREE.Mesh; index: number }> = [];
   private spawned = false;
   private disposed = false;
 
   // Posture, locomotion, stage choreography & A* pathfinding state machine
   private postureState: HeroinePostureState = 'seated';
   private standUpProgress = 0;
-  private standUpDuration = 1.15;
+  private standUpDuration = 1.72;
+  private standUpStartYaw = BEDROOM_BED_SEAT_ANCHOR.facingYaw;
+  private standUpForwardDist = 0.36;
+  // 2nd-order physics damping state for bed-edge stand-up (zero drift, ground reaction feedback)
+  private standUpComFwd = 0;
+  private standUpComVelFwd = 0;
+  private standUpPelvisY = 0;
+  private standUpPelvisVelY = 0;
+  private standUpKneeSpring = 0;
+  private standUpKneeVel = 0;
+  private standUpGroundLoad = 0;
+  private standUpPlantedCaptured = false;
+  private readonly standUpPlantedFootWorld = new THREE.Vector3();
   private walkPhase = 0;
+  private walkStartElapsed = 0;
   private walkTargetPos = new THREE.Vector3(-6.38, 0, -2.50);
   private onWalkArrived: (() => void) | null = null;
   private activePath: PathPoint2D[] = [];
@@ -296,8 +329,8 @@ export class HeroineAvatarController {
   private onChairTransitionDone: (() => void) | null = null;
 
   // Living Room Sofa co-sitting state
-  private sofaSeatPos = new THREE.Vector3(2.68, 0, -5.68);
-  private sofaEntryPos = new THREE.Vector3(3.48, 0, -5.68);
+  private sofaSeatPos = new THREE.Vector3(2.74, 0, -5.68);
+  private sofaEntryPos = new THREE.Vector3(3.14, 0, -5.68);
   private sofaStandStartPos = new THREE.Vector3();
   private sofaTvLookPos = new THREE.Vector3(6.74, 1.28, -5.08);
   private sofaSeatSurfaceY = 0.495;
@@ -325,6 +358,35 @@ export class HeroineAvatarController {
   private sofaLegShiftAdd = 0;
   private sofaShoulderRestBlend = 0;
   private sofaBehaviorPendingNotice: SofaTvBehaviorNotice | null = null;
+
+  // Living Room Co-Play Xbox Controller Fetch & Handoff Choreography
+  private gamingPhase:
+    | 'none'
+    | 'stand_from_sofa'
+    | 'walk_to_table'
+    | 'pickup_pads'
+    | 'walk_to_player'
+    | 'handoff_wait'
+    | 'return_to_sofa'
+    | 'sit_back_sofa'
+    | 'playing_sofa' = 'none';
+  private gamingPhaseTimer = 0;
+  private gamingPickupNotified = false;
+  private gamingHandoffTaken = false;
+  private gamingActionPulse = 0;
+  private gamingCallbacks: {
+    onPickedUpFromTable?: () => void;
+    onHandoffStart?: () => void;
+    onWhitePadTaken?: () => void;
+    onBackSeated?: () => void;
+  } | null = null;
+  private heldWhitePadMesh: THREE.Group | null = null;
+  private heldPurplePadMesh: THREE.Group | null = null;
+  private hasWhitePadInHand = false;
+  private hasPurplePadInHand = false;
+  private readonly _padWorldPos = new THREE.Vector3();
+  private readonly _padWorldPosB = new THREE.Vector3();
+  private readonly _padWorldQuat = new THREE.Quaternion();
 
   // Toy-gun aim reaction: tight eye-shut defensive flinch -> micro-pout aggrieved expression
   private toyGunAimed = false;
@@ -404,7 +466,17 @@ export class HeroineAvatarController {
   private currentBlush = 0;
   private currentHeadTilt = 0;
   private currentLeanForward = 0;
-  // Strictly tracked single-emotion native VRM weights (all smoothly damped, never stacked)
+  // Strictly tracked single-emotion native VRM state machine (ZERO mixing; fade out to 0 before fading in next)
+  private activeExprChannel:
+    | 'none'
+    | 'happy'
+    | 'relaxed'
+    | 'sad'
+    | 'angry'
+    | 'surprised'
+    | 'blink'
+    | 'blinkLeft' = 'none';
+  private activeExprLinear = 0;
   private currentHappy = 0;
   private currentRelaxed = 0;
   private currentSad = 0;
@@ -939,7 +1011,7 @@ export class HeroineAvatarController {
     this.onSofaTransitionDone = onSeated ?? null;
 
     this.activePerformance = {
-      expression: 'relaxed',
+      expression: 'happy',
       gesture: 'idle',
       blush: 0.14,
       headTilt: 0,
@@ -956,6 +1028,7 @@ export class HeroineAvatarController {
     } else {
       this.restoreStandingSkirtPhysics();
       this.planPathTo(entryPos.x, entryPos.z, entryPos.y);
+      this.walkStartElapsed = 0;
       this.postureState = 'walking_to_sofa';
     }
   }
@@ -1016,9 +1089,85 @@ export class HeroineAvatarController {
     this.sofaStandStartPos.copy(this.root.position);
     this.sofaEntryPos.copy(standPos);
     this.sofaTransitionProgress = 0;
-    this.sofaTransitionDuration = 0.85;
+    this.sofaTransitionDuration = 0.96;
+    this.standUpPlantedCaptured = false;
     this.onSofaTransitionDone = onStood ?? null;
     this.postureState = 'standing_up_sofa';
+  }
+
+  public registerHeldControllerMeshes(
+    whitePad: THREE.Group,
+    purplePad: THREE.Group
+  ): void {
+    if (this.heldWhitePadMesh) this.root.remove(this.heldWhitePadMesh);
+    if (this.heldPurplePadMesh) this.root.remove(this.heldPurplePadMesh);
+    this.heldWhitePadMesh = whitePad;
+    this.heldPurplePadMesh = purplePad;
+    whitePad.visible = false;
+    purplePad.visible = false;
+    this.root.add(whitePad);
+    this.root.add(purplePad);
+  }
+
+  public isCoPlayCutsceneBusy(): boolean {
+    return (
+      this.gamingPhase !== 'none' &&
+      this.gamingPhase !== 'playing_sofa'
+    );
+  }
+
+  public beginSofaCoPlayCutscene(callbacks: {
+    onPickedUpFromTable?: () => void;
+    onHandoffStart?: () => void;
+    onWhitePadTaken?: () => void;
+    onBackSeated?: () => void;
+  }): void {
+    this.gamingCallbacks = callbacks;
+    this.gamingPhase = 'stand_from_sofa';
+    this.gamingPhaseTimer = 0;
+    this.gamingPickupNotified = false;
+    this.gamingHandoffTaken = false;
+    this.hasWhitePadInHand = false;
+    this.hasPurplePadInHand = false;
+    this.gamingActionPulse = 0;
+    this.walkUpperBodyStyle = 'normal';
+
+    this.beginStandUpFromLivingSofa(new THREE.Vector3(3.14, 0, -5.68), () => {
+      if (this.gamingPhase !== 'stand_from_sofa') return;
+      this.gamingPhase = 'walk_to_table';
+      this.gamingPhaseTimer = 0;
+      const tableSpot = new THREE.Vector3(3.96, 0, -5.22);
+      this.walkTargetPos.copy(tableSpot);
+      this.planPathTo(tableSpot.x, tableSpot.z, 0);
+      this.onStageWalkArrived = () => {
+        if (this.gamingPhase !== 'walk_to_table') return;
+        this.gamingPhase = 'pickup_pads';
+        this.gamingPhaseTimer = 0;
+        this.activePerformance = {
+          expression: 'happy',
+          gesture: 'idle',
+          blush: 0.22,
+          headTilt: 0.05,
+          leanForward: 0.35,
+        };
+      };
+      this.walkStartElapsed = 0;
+      this.postureState = 'dialogue_walking';
+    });
+  }
+
+  public triggerGamingReactionPulse(strength = 1.0): void {
+    this.gamingActionPulse = Math.min(1.3, Math.max(this.gamingActionPulse, strength));
+  }
+
+  public endSofaCoPlay(): void {
+    this.gamingPhase = 'none';
+    this.gamingPhaseTimer = 0;
+    this.gamingCallbacks = null;
+    this.hasWhitePadInHand = false;
+    this.hasPurplePadInHand = false;
+    if (this.heldWhitePadMesh) this.heldWhitePadMesh.visible = false;
+    if (this.heldPurplePadMesh) this.heldPurplePadMesh.visible = false;
   }
 
   /**
@@ -1203,11 +1352,45 @@ export class HeroineAvatarController {
     if (this.postureState === 'seated') {
       this.postureState = 'standing_up';
       this.standUpProgress = 0;
-      this.standUpDuration = 1.48;
+      this.standUpDuration = 1.72;
+      this.standUpStartYaw = BEDROOM_BED_SEAT_ANCHOR.facingYaw;
+      this.standUpForwardDist = 0.36;
+
+      // Measure actual horizontal sagittal distance from seated pelvis to her hanging ankles
+      // so the stand-up COM shift places her hips squarely over her planted feet with zero drift.
+      if (this.vrm) {
+        const hipsNode = this.vrm.humanoid.getNormalizedBoneNode('hips');
+        const lFoot = this.vrm.humanoid.getNormalizedBoneNode('leftFoot');
+        const rFoot = this.vrm.humanoid.getNormalizedBoneNode('rightFoot');
+        if (hipsNode && lFoot && rFoot) {
+          this.root.updateMatrixWorld(true);
+          hipsNode.getWorldPosition(_hipsWorldPos);
+          lFoot.getWorldPosition(_leftLegWorldPos);
+          rFoot.getWorldPosition(_rightLegWorldPos);
+          const avgFootX = (_leftLegWorldPos.x + _rightLegWorldPos.x) * 0.5;
+          const avgFootZ = (_leftLegWorldPos.z + _rightLegWorldPos.z) * 0.5;
+          const fwdX = Math.sin(this.standUpStartYaw);
+          const fwdZ = Math.cos(this.standUpStartYaw);
+          const proj = (avgFootX - _hipsWorldPos.x) * fwdX + (avgFootZ - _hipsWorldPos.z) * fwdZ;
+          if (Number.isFinite(proj) && proj > 0.20 && proj < 0.52) {
+            this.standUpForwardDist = THREE.MathUtils.clamp(proj, 0.30, 0.44);
+          }
+        }
+      }
+
+      // Initialize 2nd-order physics damping state cleanly
+      this.standUpComFwd = 0;
+      this.standUpComVelFwd = 0;
+      this.standUpPelvisY = this.seatedRootY;
+      this.standUpPelvisVelY = 0;
+      this.standUpKneeSpring = 0;
+      this.standUpKneeVel = 0;
+      this.standUpGroundLoad = 0;
+      this.standUpPlantedCaptured = false;
+
       this.walkPhase = 0;
       this.gestureElapsed = 0;
       this.greetingWaveElapsed = 0;
-      this.smoothedBoneEuler.clear();
       // Keep seated skirt colliders active until legs straighten past ~75% during standing_up
       // so the skirt glides smoothly off the bed edge instead of collapsing on frame 1!
       this.activePerformance = {
@@ -1229,6 +1412,7 @@ export class HeroineAvatarController {
       if (dist > 1.75) {
         this.planPathTo(tx, tz, this.root.position.y);
         this.postureState = 'walking_to_player';
+        this.walkStartElapsed = 0;
       } else {
         this.postureState = 'standing_talking';
         const cb = this.onWalkArrived;
@@ -1316,9 +1500,10 @@ export class HeroineAvatarController {
           return;
         }
         this.walkUpperBodyStyle = 'arms_crossed';
-        this.walkTargetPos.set(gx, this.root.position.y, gz);
+        this.walkTargetPos.set(gx, 0, gz);
         this.planPathTo(gx, gz, this.root.position.y);
         this.postureState = 'dialogue_walking';
+        this.walkStartElapsed = 0;
         this.onStageWalkArrived = () => {
           this.walkUpperBodyStyle = 'normal';
           this.postureState = 'standing_talking';
@@ -1349,6 +1534,7 @@ export class HeroineAvatarController {
         this.walkUpperBodyStyle = 'normal';
         this.walkTargetPos.set(gx, this.root.position.y, gz);
         this.planPathTo(gx, gz, this.root.position.y);
+        this.walkStartElapsed = 0;
         this.postureState = 'dialogue_walking';
         this.onStageWalkArrived = () => {
           this.postureState = 'standing_talking';
@@ -1385,6 +1571,7 @@ export class HeroineAvatarController {
         this.walkUpperBodyStyle = 'normal';
         this.walkTargetPos.set(entryX, chair.floorY, entryZ);
         this.planPathTo(entryX, entryZ, this.root.position.y);
+        this.walkStartElapsed = 0;
         this.postureState = 'dialogue_walking';
         this.pendingSitChairAfterWalk = true;
         this.onStageWalkArrived = () => {
@@ -1455,8 +1642,8 @@ export class HeroineAvatarController {
 
   private beginStandUpFromChair(onStood?: () => void): void {
     const chair = this.bedroomChair;
-    // Step cleanly just 0.36m in front of the swivel chair cushion (never lunging into player's camera)
-    const standDist = 0.36;
+    // Step cleanly directly over her planted feet (~0.28m forward of swivel chair center)
+    const standDist = 0.28;
     const fx = Math.sin(this.root.rotation.y);
     const fz = Math.cos(this.root.rotation.y);
     const targetX = THREE.MathUtils.clamp(
@@ -1475,7 +1662,8 @@ export class HeroineAvatarController {
     this.chairStandStartPos.copy(this.root.position);
     this.chairEntryPos.set(targetX, chair ? chair.floorY : 0, targetZ);
     this.chairTransitionProgress = 0;
-    this.chairTransitionDuration = 0.92;
+    this.chairTransitionDuration = 0.96;
+    this.standUpPlantedCaptured = false;
     this.onChairTransitionDone = onStood ?? null;
     this.postureState = 'standing_up_chair';
   }
@@ -1648,6 +1836,15 @@ export class HeroineAvatarController {
     this.resetPoseTransitionState();
     this.resetSofaTvStateMachine(true);
     this.zeroLocomotionMixerWeights();
+    this.activeExprChannel = 'none';
+    this.activeExprLinear = 0;
+    this.currentHappy = 0;
+    this.currentRelaxed = 0;
+    this.currentSad = 0;
+    this.currentAngry = 0;
+    this.currentSurprised = 0;
+    this.currentWink = 0;
+    this.winkPulseElapsed = -1;
     this.activePerformance = {
       expression: 'neutral',
       gesture: 'idle',
@@ -2599,13 +2796,40 @@ export class HeroineAvatarController {
       loadedVrm.springBoneManager?.setInitState();
 
       const hipsNode = loadedVrm.humanoid.getNormalizedBoneNode('hips');
+      loadedVrm.scene.getWorldPosition(_rootWorldPos);
       if (hipsNode) {
         hipsNode.getWorldPosition(_hipsWorldPos);
-        loadedVrm.scene.getWorldPosition(_rootWorldPos);
         const dy = Math.abs(_hipsWorldPos.y - _rootWorldPos.y);
         if (dy > 0.25 && dy < 1.5) {
           this.vrmStandingHipsHeight = dy;
         }
+      }
+
+      const lFootRest = loadedVrm.humanoid.getNormalizedBoneNode('leftFoot');
+      const rFootRest = loadedVrm.humanoid.getNormalizedBoneNode('rightFoot');
+      if (lFootRest && rFootRest) {
+        lFootRest.getWorldPosition(_leftLegWorldPos);
+        rFootRest.getWorldPosition(_rightLegWorldPos);
+        const avgFootH = ((_leftLegWorldPos.y + _rightLegWorldPos.y) * 0.5) - _rootWorldPos.y;
+        if (Number.isFinite(avgFootH) && avgFootH >= 0.01 && avgFootH < 0.35) {
+          this.vrmStandingFootHeight = avgFootH;
+        }
+      }
+
+      const lToesRest = loadedVrm.humanoid.getNormalizedBoneNode('leftToes');
+      const rToesRest = loadedVrm.humanoid.getNormalizedBoneNode('rightToes');
+      if (lToesRest && rToesRest) {
+        lToesRest.getWorldPosition(_leftLegWorldPos);
+        rToesRest.getWorldPosition(_rightLegWorldPos);
+        const avgToesH = ((_leftLegWorldPos.y + _rightLegWorldPos.y) * 0.5) - _rootWorldPos.y;
+        if (Number.isFinite(avgToesH) && avgToesH >= 0.002 && avgToesH < 0.25) {
+          this.vrmStandingToesHeight = avgToesH;
+          this.hasStandingToesBone = true;
+        } else {
+          this.hasStandingToesBone = false;
+        }
+      } else {
+        this.hasStandingToesBone = false;
       }
 
       // Wire native VRM LookAt eye tracker to world-space lookAtTarget
@@ -2624,6 +2848,7 @@ export class HeroineAvatarController {
 
       this.rebindAllClips();
       this.discoverLipSyncTargets(loadedVrm);
+      this.decoupleSmileExpressionBinds(loadedVrm);
       this.attachCheekBlushPlanes(loadedVrm);
       this.configureSeatedSkirtPhysics(loadedVrm, 'bed');
       this.postureState = 'seated';
@@ -2682,6 +2907,179 @@ export class HeroineAvatarController {
           }
         }
       });
+    }
+  }
+
+  /**
+   * Decouples eye-smile morphs from mouth-opening morphs inside the VRM's native `happy`/`joy`
+   * expression preset so smiling curves her eyes cleanly while keeping her mouth completely closed.
+   * Also records open-mouth morph targets to enforce zero jaw/mouth opening during smiles.
+   */
+  private decoupleSmileExpressionBinds(vrm: VRM): void {
+    this.smileBlockedMouthMorphs = [];
+
+    const eyeOrBrowOrAllRegex =
+      /(?:^|[._-])(?:fcl_)?(?:all|eye|brw|brow|blink|wink|eyelash|eyeline|iris|highlight)|目|眉|まばたき|ウィンク/i;
+    const safeMouthExcludeRegex =
+      /(?:^|[._-])(?:fcl_)?(?:mth_(?:up|close|neutral)|mouth[_-]?(?:close|neutral)|ha_hide)$/i;
+
+    const mouthMorphRegex =
+      /(?:^|[._-])(?:fcl_)?(?:mth_|mouth|lip|jaw|teeth|tongue|kuchi|ha_|vrc\.v_)|^(?:aa|ih|ou|ee|oh|a|i|u|e|o|口|くち|あ|い|う|え|お)$/i;
+    const combinedAllSmileRegex = /(?:^|[._-])(?:fcl_)?all[_-]?(?:joy|happy|smile|fun)$/i;
+
+    const normalizeMorphKey = (key: string) => key.replace(/^.*\./, '').toLowerCase();
+
+    const pickSingleSmileEyeIndices = (dict: Record<string, number>): number[] => {
+      const entries = Object.entries(dict).map(([k, idx]) => [normalizeMorphKey(k), idx] as const);
+      const exactOrder = [
+        /(?:^|[._-])(?:fcl_)?eye[_-]?joy$/,
+        /(?:^|[._-])(?:fcl_)?eye[_-]?happy$/,
+        /(?:^|[._-])(?:fcl_)?eye[_-]?smile$/,
+        /(?:^|[._-])(?:fcl_)?eye[_-]?fun$/,
+        /(?:^|[._-])(?:fcl_)?eye[_-]?close$/,
+      ];
+      for (const rx of exactOrder) {
+        const hit = entries.find(([nk]) => rx.test(nk));
+        if (hit) return [hit[1]];
+      }
+      // Fallback only if no unified bilateral eye morph exists: one L + one R pair
+      const pairOrder: Array<[RegExp, RegExp]> = [
+        [/(?:^|[._-])(?:fcl_)?eye[_-]?joy[_-]?l$/, /(?:^|[._-])(?:fcl_)?eye[_-]?joy[_-]?r$/],
+        [/(?:^|[._-])(?:fcl_)?eye[_-]?happy[_-]?l$/, /(?:^|[._-])(?:fcl_)?eye[_-]?happy[_-]?r$/],
+        [/(?:^|[._-])(?:fcl_)?eye[_-]?close[_-]?l$/, /(?:^|[._-])(?:fcl_)?eye[_-]?close[_-]?r$/],
+      ];
+      for (const [rxL, rxR] of pairOrder) {
+        const hitL = entries.find(([nk]) => rxL.test(nk));
+        const hitR = entries.find(([nk]) => rxR.test(nk));
+        if (hitL && hitR) return [hitL[1], hitR[1]];
+      }
+      return [];
+    };
+
+    const pickSingleSmileBrowIndex = (dict: Record<string, number>): number | null => {
+      const entries = Object.entries(dict).map(([k, idx]) => [normalizeMorphKey(k), idx] as const);
+      const exactOrder = [
+        /(?:^|[._-])(?:fcl_)?(?:brw|brow)[_-]?joy$/,
+        /(?:^|[._-])(?:fcl_)?(?:brw|brow)[_-]?happy$/,
+        /(?:^|[._-])(?:fcl_)?(?:brw|brow)[_-]?smile$/,
+        /(?:^|[._-])(?:fcl_)?(?:brw|brow)[_-]?fun$/,
+      ];
+      for (const rx of exactOrder) {
+        const hit = entries.find(([nk]) => rx.test(nk));
+        if (hit) return hit[1];
+      }
+      return null;
+    };
+
+    vrm.scene.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.morphTargetDictionary || !mesh.morphTargetInfluences) return;
+      for (const [key, idx] of Object.entries(mesh.morphTargetDictionary)) {
+        if (
+          !eyeOrBrowOrAllRegex.test(key) &&
+          !safeMouthExcludeRegex.test(key) &&
+          mouthMorphRegex.test(key)
+        ) {
+          this.smileBlockedMouthMorphs.push({ mesh, index: idx });
+        }
+      }
+    });
+
+    const exprMgr = vrm.expressionManager;
+    if (!exprMgr) return;
+
+    for (const presetName of ['happy', 'joy']) {
+      const expr = exprMgr.getExpression(presetName);
+      if (!expr) continue;
+
+      // Prevent @pixiv/three-vrm from layering any mouth or blink weights on top of native smile
+      expr.overrideMouth = 'block';
+      expr.overrideBlink = 'block';
+
+      const bindsCopy = [...expr.binds];
+      const hasBoundMorphIndex = (prim: THREE.Mesh, idx: number): boolean =>
+        expr.binds.some(
+          (b) =>
+            'primitives' in b &&
+            'index' in b &&
+            (b as VRMExpressionMorphTargetBind).index === idx &&
+            (b as VRMExpressionMorphTargetBind).primitives.includes(prim)
+        );
+
+      for (const bind of bindsCopy) {
+        if (
+          !(
+            bind &&
+            'primitives' in bind &&
+            Array.isArray((bind as VRMExpressionMorphTargetBind).primitives) &&
+            typeof (bind as VRMExpressionMorphTargetBind).index === 'number'
+          )
+        ) {
+          continue;
+        }
+        const morphBind = bind as VRMExpressionMorphTargetBind;
+        const bindNames: string[] = [];
+        for (const prim of morphBind.primitives) {
+          const dict = prim.morphTargetDictionary;
+          if (!dict) continue;
+          for (const [key, idx] of Object.entries(dict)) {
+            if (idx === morphBind.index) {
+              bindNames.push(key);
+            }
+          }
+        }
+
+        const isCombinedAll = bindNames.some((n) => combinedAllSmileRegex.test(n));
+        if (isCombinedAll) {
+          // Collect single prioritized eye + brow replacement binds BEFORE deleting Fcl_ALL_*
+          const plannedReplacements: Array<{ prim: THREE.Mesh; index: number }> = [];
+          let foundEyeReplacement = false;
+
+          for (const prim of morphBind.primitives) {
+            const dict = prim.morphTargetDictionary;
+            if (!dict) continue;
+
+            const eyeIndices = pickSingleSmileEyeIndices(dict);
+            if (eyeIndices.length > 0) {
+              foundEyeReplacement = true;
+              for (const idx of eyeIndices) {
+                plannedReplacements.push({ prim, index: idx });
+              }
+            }
+
+            const browIdx = pickSingleSmileBrowIndex(dict);
+            if (browIdx !== null) {
+              plannedReplacements.push({ prim, index: browIdx });
+            }
+          }
+
+          if (foundEyeReplacement) {
+            expr.deleteBind(morphBind);
+            for (const rep of plannedReplacements) {
+              if (!hasBoundMorphIndex(rep.prim, rep.index)) {
+                expr.addBind(
+                  new VRMExpressionMorphTargetBind({
+                    primitives: [rep.prim],
+                    index: rep.index,
+                    weight: morphBind.weight,
+                  })
+                );
+              }
+            }
+          }
+          continue;
+        }
+
+        const isMouthBind = bindNames.some(
+          (n) =>
+            !eyeOrBrowOrAllRegex.test(n) &&
+            !safeMouthExcludeRegex.test(n) &&
+            mouthMorphRegex.test(n)
+        );
+        if (isMouthBind) {
+          expr.deleteBind(morphBind);
+        }
+      }
     }
   }
 
@@ -2940,8 +3338,14 @@ export class HeroineAvatarController {
     }
 
     const enteringMixamo = this.activePoseDriver !== 'mixamo';
+    const startingFreshWalk =
+      isMoving && hasWalk && (enteringMixamo || this.actionWeights.walk < 0.04);
+    if (startingFreshWalk && this.actions.walk) {
+      this.actions.walk.time = 0;
+    }
+
     if (enteringMixamo) {
-      this.beginPoseDriverTransition('mixamo', 0.34);
+      this.beginPoseDriverTransition('mixamo', isMoving ? 0.22 : 0.30);
       // Start Mixamo immediately at full normalized weight (1.0) so our bone-level SLERP
       // blends cleanly from the previous pose with zero T-pose intermediate frames.
       if (hasIdle && hasWalk) {
@@ -2956,7 +3360,7 @@ export class HeroineAvatarController {
       }
     } else if (hasIdle && hasWalk) {
       const targetWalk = isMoving ? 1.0 : 0.0;
-      let nextWalk = THREE.MathUtils.damp(this.actionWeights.walk, targetWalk, 7.5, dt);
+      let nextWalk = THREE.MathUtils.damp(this.actionWeights.walk, targetWalk, 10.5, dt);
       if (nextWalk < 0.002) nextWalk = 0;
       else if (nextWalk > 0.998) nextWalk = 1;
       this.actionWeights.walk = nextWalk;
@@ -2976,8 +3380,8 @@ export class HeroineAvatarController {
     if (this.actions.walk) {
       this.actions.walk.setEffectiveWeight(this.actionWeights.walk);
       const speedScale = THREE.MathUtils.clamp(
-        Math.max(moveSpeed, 0.58) / this.walkClipNativeSpeed,
-        0.55,
+        Math.max(moveSpeed, 0.20) / Math.max(0.4, this.walkClipNativeSpeed),
+        0.24,
         1.55
       );
       this.actions.walk.setEffectiveTimeScale(speedScale);
@@ -3334,6 +3738,29 @@ export class HeroineAvatarController {
     } else {
       this.standingGestureBlend = THREE.MathUtils.damp(this.standingGestureBlend, 0, 6.0, dt);
     }
+
+    // While co-seated holding her light-purple Xbox controller & playing TV games together,
+    // comfortably hold the controller in front of her waist/chest with playful reactive tilt!
+    if (sitBlend > 0.85 && this.gamingPhase === 'playing_sofa') {
+      const s = this.getVrmAxisSign(vrm);
+      const tilt = Math.sin(elapsed * 4.4) * 0.04 + this.gamingActionPulse * 0.14;
+      const setArm = (bone: VRMHumanBoneName, rx: number, ry: number, rz: number, order: THREE.EulerOrder = 'ZYX') => {
+        const node = vrm.humanoid.getNormalizedBoneNode(bone);
+        if (!node) return;
+        _footEuler.set(rx * s, ry, rz * s, order);
+        node.quaternion.setFromEuler(_footEuler);
+      };
+      setArm('leftShoulder', 0.03, 0.06, -0.02, 'YXZ');
+      setArm('rightShoulder', 0.03, -0.06, 0.02, 'YXZ');
+      setArm('leftUpperArm', 0.42 + tilt * 0.4, -0.46, -1.04, 'ZYX');
+      setArm('rightUpperArm', 0.42 - tilt * 0.4, 0.46, 1.04, 'ZYX');
+      setArm('leftLowerArm', -0.08, -1.34 + tilt * 0.3, 0.0, 'YXZ');
+      setArm('rightLowerArm', 0.08, 1.34 - tilt * 0.3, 0.0, 'YXZ');
+      setArm('leftHand', 0.14, 0.16, 0.12, 'XYZ');
+      setArm('rightHand', 0.14, -0.16, -0.12, 'XYZ');
+      this.applyHandFingerPreset(vrm, 'left', 'heart');
+      this.applyHandFingerPreset(vrm, 'right', 'heart');
+    }
   }
 
   /**
@@ -3347,7 +3774,8 @@ export class HeroineAvatarController {
     elapsed: number,
     sitBlend = 1,
     poseOverride?: HeroinePoseDefinition,
-    transitionLeanPitch = 0
+    transitionLeanPitch = 0,
+    standUpFootwork?: StandUpFootworkState
   ): void {
     // 1. Reset all normalized bones cleanly to canonical rest pose before posing
     vrm.humanoid.resetNormalizedPose();
@@ -3369,7 +3797,14 @@ export class HeroineAvatarController {
     const sofaLegShift = this.sofaLegShiftAdd * sofaFsmScale;
     const restBlend = this.sofaShoulderRestBlend * sofaFsmScale;
 
-    this.setCanonicalBoneRotation(vrm, 'hips', transitionLeanPitch * 0.22, 0, sofaRoll * 0.12, 'YXZ');
+    this.setCanonicalBoneRotation(
+      vrm,
+      'hips',
+      transitionLeanPitch * 0.24,
+      0,
+      sofaRoll * 0.12 + (standUpFootwork?.hipRoll ?? 0),
+      'YXZ'
+    );
     this.setCanonicalBoneRotation(
       vrm,
       'spine',
@@ -3395,11 +3830,11 @@ export class HeroineAvatarController {
       'YXZ'
     );
 
-    // 3. Legs: smooth anatomical bend from standing (s=0) to seated (s=1) + subtle posture-adjust shift
+    // 3. Legs & Feet: smooth anatomical bend + floor-contact ankle/toe micro-articulation
     this.setCanonicalBoneRotation(
       vrm,
       'leftUpperLeg',
-      legs.leftUpperLeg[0] * s + sofaLegShift * 0.22,
+      legs.leftUpperLeg[0] * s + sofaLegShift * 0.22 + (standUpFootwork?.leftHipPitchAdd ?? 0),
       legs.leftUpperLeg[1] * s + sofaLegShift * 0.35,
       legs.leftUpperLeg[2] * s + sofaLegShift * 0.28,
       'YXZ'
@@ -3407,18 +3842,17 @@ export class HeroineAvatarController {
     this.setCanonicalBoneRotation(
       vrm,
       'rightUpperLeg',
-      legs.rightUpperLeg[0] * s - sofaLegShift * 0.22,
+      legs.rightUpperLeg[0] * s - sofaLegShift * 0.22 + (standUpFootwork?.rightHipPitchAdd ?? 0),
       legs.rightUpperLeg[1] * s + sofaLegShift * 0.35,
       legs.rightUpperLeg[2] * s + sofaLegShift * 0.28,
       'YXZ'
     );
 
-    const legMicroSway = Math.sin(elapsed * 0.88) * 0.014 * s;
-    const ankleBalance = Math.sin(s * Math.PI) * -0.18; // keeps soles flatter on floor mid-squat
+    const legMicroSway = standUpFootwork ? 0 : Math.sin(elapsed * 0.88) * 0.014 * s;
     this.setCanonicalBoneRotation(
       vrm,
       'leftLowerLeg',
-      legs.leftLowerLeg[0] * s + legMicroSway - Math.abs(sofaLegShift) * 0.35,
+      legs.leftLowerLeg[0] * s + legMicroSway - Math.abs(sofaLegShift) * 0.35 + (standUpFootwork?.leftKneeAdd ?? 0),
       0,
       0,
       'YXZ'
@@ -3426,17 +3860,40 @@ export class HeroineAvatarController {
     this.setCanonicalBoneRotation(
       vrm,
       'rightLowerLeg',
-      legs.rightLowerLeg[0] * s - legMicroSway * 0.8 - Math.abs(sofaLegShift) * 0.35,
+      legs.rightLowerLeg[0] * s - legMicroSway * 0.8 - Math.abs(sofaLegShift) * 0.35 + (standUpFootwork?.rightKneeAdd ?? 0),
       0,
       0,
       'YXZ'
     );
-    this.setCanonicalBoneRotation(vrm, 'leftFoot', legs.leftFoot[0] * s + ankleBalance, 0, 0, 'YXZ');
-    this.setCanonicalBoneRotation(vrm, 'rightFoot', legs.rightFoot[0] * s + ankleBalance, 0, 0, 'YXZ');
+    if (standUpFootwork) {
+      this.setCanonicalBoneRotation(
+        vrm,
+        'leftFoot',
+        legs.leftFoot[0] * s + standUpFootwork.leftAnklePitch,
+        0,
+        standUpFootwork.leftAnkleRoll,
+        'YXZ'
+      );
+      this.setCanonicalBoneRotation(
+        vrm,
+        'rightFoot',
+        legs.rightFoot[0] * s + standUpFootwork.rightAnklePitch,
+        0,
+        standUpFootwork.rightAnkleRoll,
+        'YXZ'
+      );
+      this.setCanonicalBoneRotation(vrm, 'leftToes', standUpFootwork.leftToesPitch, 0, 0, 'YXZ');
+      this.setCanonicalBoneRotation(vrm, 'rightToes', standUpFootwork.rightToesPitch, 0, 0, 'YXZ');
+    } else {
+      const ankleBalance = Math.sin(s * Math.PI) * -0.18;
+      this.setCanonicalBoneRotation(vrm, 'leftFoot', legs.leftFoot[0] * s + ankleBalance, 0, 0, 'YXZ');
+      this.setCanonicalBoneRotation(vrm, 'rightFoot', legs.rightFoot[0] * s + ankleBalance, 0, 0, 'YXZ');
+    }
 
     // 4. Arms & Hands: smoothly SLERP between standing `idle` and `seated` lap rest when transitioning
-    const armS = poseOverride ? 1 : smoothStep(0.10, 0.92, s);
+    const armS = poseOverride ? 1 : smoothStep(0.08, 0.92, s);
     const midArc = poseOverride ? 0 : Math.sin(s * Math.PI);
+    const brace = standUpFootwork?.armPushBrace ?? 0;
     const uaOrder = pose.upperArmOrder ?? 'YXZ';
     const idleOrder = idlePose.upperArmOrder ?? 'ZYX';
     const axisSign = this.getVrmAxisSign(vrm);
@@ -3478,8 +3935,7 @@ export class HeroineAvatarController {
       0.08 * restBlend,
       0.06 * restBlend
     );
-    // Gentle outward balance sweep at mid-sit/stand keeps forearms cleanly outside her skirt!
-    // During `shoulder_rest`, subtly tuck her right arm forward on her lap so it clears the player's side.
+    // Gentle outward balance sweep at mid-sit/stand + subtle mattress push-brace keep arms crisp & collision-free
     blendBone(
       'leftUpperArm',
       idlePose.leftUpperArm,
@@ -3487,9 +3943,9 @@ export class HeroineAvatarController {
       pose.leftUpperArm,
       uaOrder,
       armS,
-      0.06 * restBlend,
-      -0.08 * midArc - 0.08 * restBlend,
-      breath * 0.010 + 0.10 * midArc
+      0.06 * restBlend - 0.14 * brace,
+      -0.08 * midArc - 0.08 * restBlend - 0.22 * brace,
+      breath * 0.010 + 0.10 * midArc - 0.08 * brace
     );
     blendBone(
       'rightUpperArm',
@@ -3498,9 +3954,9 @@ export class HeroineAvatarController {
       pose.rightUpperArm,
       uaOrder,
       armS,
-      0.12 * restBlend,
-      0.08 * midArc + 0.16 * restBlend,
-      -breath * 0.010 - 0.10 * midArc + 0.06 * restBlend
+      0.12 * restBlend - 0.14 * brace,
+      0.08 * midArc + 0.16 * restBlend + 0.22 * brace,
+      -breath * 0.010 - 0.10 * midArc + 0.06 * restBlend + 0.08 * brace
     );
     blendBone(
       'leftLowerArm',
@@ -3510,7 +3966,7 @@ export class HeroineAvatarController {
       'YXZ',
       armS,
       0.06 * restBlend,
-      -0.12 * restBlend,
+      -0.12 * restBlend + 0.34 * brace,
       0
     );
     blendBone(
@@ -3521,7 +3977,7 @@ export class HeroineAvatarController {
       'YXZ',
       armS,
       0.08 * restBlend,
-      0.18 * restBlend,
+      0.18 * restBlend - 0.34 * brace,
       0
     );
     blendBone('leftHand', idlePose.leftHand, 'XYZ', pose.leftHand, 'XYZ', armS);
@@ -3556,6 +4012,28 @@ export class HeroineAvatarController {
       cur.z = THREE.MathUtils.damp(cur.z, tz, lambda, dt);
     }
     this.setCanonicalBoneRotation(vrm, boneName, cur.x, cur.y, cur.z, order);
+  }
+
+  private seedSmoothedBonesToIdle(): void {
+    const idlePose = HEROINE_POSES.idle;
+    this.smoothedBoneEuler.set('hips', new THREE.Vector3(0, 0, 0));
+    this.smoothedBoneEuler.set('spine', new THREE.Vector3(0, 0, 0));
+    this.smoothedBoneEuler.set('chest', new THREE.Vector3(0, 0, 0));
+    this.smoothedBoneEuler.set('upperChest', new THREE.Vector3(0, 0, 0));
+    this.smoothedBoneEuler.set('leftUpperLeg', new THREE.Vector3(-0.02, 0.04, -0.035));
+    this.smoothedBoneEuler.set('rightUpperLeg', new THREE.Vector3(0.03, -0.05, 0.035));
+    this.smoothedBoneEuler.set('leftLowerLeg', new THREE.Vector3(0.05, 0, 0));
+    this.smoothedBoneEuler.set('rightLowerLeg', new THREE.Vector3(0.06, 0, 0));
+    this.smoothedBoneEuler.set('leftFoot', new THREE.Vector3(-0.03, 0, 0));
+    this.smoothedBoneEuler.set('rightFoot', new THREE.Vector3(-0.04, 0, 0));
+    this.smoothedBoneEuler.set('leftShoulder', new THREE.Vector3(...idlePose.leftShoulder));
+    this.smoothedBoneEuler.set('rightShoulder', new THREE.Vector3(...idlePose.rightShoulder));
+    this.smoothedBoneEuler.set('leftUpperArm', new THREE.Vector3(...idlePose.leftUpperArm));
+    this.smoothedBoneEuler.set('rightUpperArm', new THREE.Vector3(...idlePose.rightUpperArm));
+    this.smoothedBoneEuler.set('leftLowerArm', new THREE.Vector3(...idlePose.leftLowerArm));
+    this.smoothedBoneEuler.set('rightLowerArm', new THREE.Vector3(...idlePose.rightLowerArm));
+    this.smoothedBoneEuler.set('leftHand', new THREE.Vector3(...idlePose.leftHand));
+    this.smoothedBoneEuler.set('rightHand', new THREE.Vector3(...idlePose.rightHand));
   }
 
   /**
@@ -3617,7 +4095,9 @@ export class HeroineAvatarController {
     dt: number,
     elapsed: number,
     poseOverride?: HeroinePoseDefinition,
-    animateWaveOverride?: boolean
+    animateWaveOverride?: boolean,
+    isTuningOverride?: boolean,
+    externalWaveBlend?: number
   ): void {
     vrm.humanoid.resetNormalizedPose();
 
@@ -3625,7 +4105,7 @@ export class HeroineAvatarController {
     const pose: HeroinePoseDefinition =
       poseOverride ?? HEROINE_POSES[gesture] ?? HEROINE_POSES.idle;
     const idlePose = HEROINE_POSES.idle;
-    const isTuning = Boolean(poseOverride);
+    const isTuning = isTuningOverride ?? Boolean(poseOverride);
 
     const targetLean = THREE.MathUtils.clamp(
       isTuning ? pose.spineLean ?? 0 : this.activePerformance.leanForward ?? pose.spineLean ?? 0,
@@ -3674,7 +4154,7 @@ export class HeroineAvatarController {
     this.setDampedCanonicalBone(vrm, 'rightFoot', -0.04, 0, 0, dt, 8);
 
     const lSh: [number, number, number] = [...pose.leftShoulder];
-    const rSh: [number, number, number] = [...pose.rightShoulder];
+    let rSh: [number, number, number] = [...pose.rightShoulder];
     const lUA: [number, number, number] = [
       pose.leftUpperArm[0],
       pose.leftUpperArm[1],
@@ -3693,12 +4173,13 @@ export class HeroineAvatarController {
     let leftFingerMode: HeroineFingerMode = pose.leftFingerMode ?? 'relaxed';
     let rightFingerMode: HeroineFingerMode = pose.rightFingerMode ?? 'relaxed';
 
-    // Optional soft greeting wave oscillation (auto-relaxes to idle after durationSec in dialogue;
-    // pauses cleanly when adjusting sliders in Pose Tuner unless animateWaveOverride is enabled)
+    // Optional soft greeting wave oscillation (or smooth external blend during greeting_wave / reach_hand)
     if (pose.waveMotion && (!isTuning || animateWaveOverride)) {
       const wm = pose.waveMotion;
       let waveBlend = 1.0;
-      if (!isTuning) {
+      if (typeof externalWaveBlend === 'number') {
+        waveBlend = THREE.MathUtils.clamp(externalWaveBlend, 0, 1);
+      } else if (!isTuning) {
         const waveFade =
           this.gestureElapsed < wm.durationSec
             ? 1.0
@@ -3708,6 +4189,11 @@ export class HeroineAvatarController {
       const waveOsc = Math.sin((isTuning ? elapsed : this.gestureElapsed) * wm.speed) * waveBlend;
 
       if (waveBlend < 0.999) {
+        rSh = [
+          THREE.MathUtils.lerp(idlePose.rightShoulder[0], pose.rightShoulder[0], waveBlend),
+          THREE.MathUtils.lerp(idlePose.rightShoulder[1], pose.rightShoulder[1], waveBlend),
+          THREE.MathUtils.lerp(idlePose.rightShoulder[2], pose.rightShoulder[2], waveBlend),
+        ];
         rUA = [
           THREE.MathUtils.lerp(idlePose.rightUpperArm[0], pose.rightUpperArm[0], waveBlend),
           THREE.MathUtils.lerp(idlePose.rightUpperArm[1], pose.rightUpperArm[1], waveBlend),
@@ -3739,7 +4225,7 @@ export class HeroineAvatarController {
     }
 
     const uaOrder = pose.upperArmOrder ?? 'ZYX';
-    const armLambda = isTuning ? 28.0 : 6.0;
+    const armLambda = isTuning ? 28.0 : 6.2;
     const handLambda = isTuning ? 28.0 : 7.5;
     this.setDampedCanonicalBone(vrm, 'leftShoulder', lSh[0], lSh[1], lSh[2], dt, armLambda);
     this.setDampedCanonicalBone(vrm, 'rightShoulder', rSh[0], rSh[1], rSh[2], dt, armLambda);
@@ -3847,6 +4333,12 @@ export class HeroineAvatarController {
 
     if (this.poseTuner) {
       lookTargetWorld.copy(playerEyeWorldPos);
+    } else if (this.gamingPhase === 'pickup_pads') {
+      lookTargetWorld.set(4.36, 0.48, -5.22);
+    } else if (this.gamingPhase === 'handoff_wait') {
+      lookTargetWorld.copy(playerEyeWorldPos);
+    } else if (this.gamingPhase === 'playing_sofa') {
+      lookTargetWorld.copy(this.sofaTvLookPos);
     } else if (isWalkingNow) {
       // Logical attention: watch where she is walking!
       const fwdX = Math.sin(this.root.rotation.y);
@@ -4081,14 +4573,16 @@ export class HeroineAvatarController {
   }
 
   /**
-   * Pure single-emotion native VRM expression driver (weights sourced from `heroinePoses.js`):
-   * 1. Strictly ZERO emotion stacking — at most ONE native emotion preset is non-zero at a time;
-   *    all other emotion weights smoothly damp to exact 0.
-   * 2. Keeps eyes bright & open during dialogue (no heavy half-shut grin).
-   * 3. Automatically pauses background blinking whenever a strong eye-closing expression
-   *    (e.g. `wink` or strong `happy`/`relaxed`) is active so eyelids never double-crush.
-   * 4. Uses soft, restrained 5-vowel lip-sync (`aa/ih/ou/ee/oh`).
-   * 5. Smoothly returns all emotions, vowels, and cheek blush to exact 0 on neutral/idle.
+   * Pure single-channel native VRM expression driver (`不要混合，切换表情再过渡`):
+   * 1. At ANY point in time, at most ONE native VRM expression channel (`happy`, `relaxed`, `sad`,
+   *    `angry`, `surprised`, `blink`, `blinkLeft`) is non-zero — NEVER two expressions stacked.
+   * 2. When switching expressions (e.g. `neutral` -> `happy`, `happy` -> `sad`), the outgoing
+   *    expression (plus any active lip-sync/blink when entering a non-neutral expression) first
+   *    transitions cleanly down to exact 0 (~0.13s), and ONLY THEN does the new native expression
+   *    transition smoothly up to 1.0 (~0.16s).
+   * 3. When smiling (`happy` = native VRM `欣喜`/`喜悦` face at full 1.0), eyes close completely
+   *    via the VRM's native morphs, and mouth vowels + auto-blink stay strictly at 0 so the mouth
+   *    never opens or distorts the smile.
    */
   private updateExpressionsLipSyncAndBlush(vrm: VRM, dt: number): void {
     const expr = vrm.expressionManager;
@@ -4113,127 +4607,133 @@ export class HeroineAvatarController {
               ? 'neutral'
               : this.activePerformance.expression;
 
-    const baseWeights = HEROINE_EXPRESSIONS[preset] ?? HEROINE_EXPRESSIONS.neutral;
+    type ExprChannel =
+      | 'none'
+      | 'happy'
+      | 'relaxed'
+      | 'sad'
+      | 'angry'
+      | 'surprised'
+      | 'blink'
+      | 'blinkLeft';
 
-    // One-shot lively single-eye wink: close (~0.10s) -> cute hold (~0.26s) -> open (~0.16s),
-    // then settle cleanly back to both eyes open with a gentle warm smile!
-    let targetWinkWeight = baseWeights.wink;
-    let targetHappyWeight = baseWeights.happy;
-    let targetRelaxedWeight = baseWeights.relaxed;
-    let targetSurprisedWeight = baseWeights.surprised;
+    let desiredChannel: ExprChannel = 'none';
+    let desiredWeight = 0;
 
-    if (this.postureState === 'greeting_wave' && !this.poseTuner && this.toyGunPhase === 'none') {
-      // Squint-smile wave (0.00s..1.38s: bright squinting smile happy=0.72),
-      // then warmly open eyes (1.38s..2.15s: smooth ramp down to soft eyes-open smile happy=0.18)!
-      const gt = this.greetingWaveElapsed;
-      if (gt < 0.22) {
-        targetHappyWeight = 0.72 * smoothStep(0, 0.22, gt);
-      } else if (gt < 1.38) {
-        targetHappyWeight = 0.72;
+    if (!this.poseTuner && this.toyGunPhase === 'flinch') {
+      desiredChannel = 'blink';
+      desiredWeight = 1.0;
+    } else if (this.postureState === 'greeting_wave' && !this.poseTuner && this.toyGunPhase === 'none') {
+      // Squint-smile wave (0..1.38s: pure native VRM 欣喜 happy=1.0),
+      // then smoothly transition back to neutral (eyes open) before dialogue begins!
+      if (this.greetingWaveElapsed < 1.38) {
+        desiredChannel = 'happy';
+        desiredWeight = 1.0;
       } else {
-        targetHappyWeight = THREE.MathUtils.lerp(0.72, 0.18, smoothStep(1.38, 1.98, gt));
+        desiredChannel = 'none';
+        desiredWeight = 0;
       }
-      targetRelaxedWeight = 0;
-      targetSurprisedWeight = 0;
-      targetWinkWeight = 0;
+    } else if (!this.poseTuner && this.toyGunPhase === 'pout') {
+      desiredChannel = 'sad';
+      desiredWeight = 1.0;
     } else if (
       this.postureState === 'seated_chair' &&
       this.bedroomIdleChairWaitActive &&
       !this.poseTuner &&
       this.toyGunPhase === 'none'
     ) {
-      if (this.chairBoredomState === 'chin_rest') {
-        targetRelaxedWeight = 0.26;
-      } else if (this.chairBoredomState === 'swivel_play' || this.chairBoredomState === 'kick_feet') {
-        targetHappyWeight = 0.22;
-      }
-    } else if (preset === 'wink' && !this.poseTuner) {
-      if (this.winkPulseElapsed < 0) {
-        this.winkPulseElapsed = 0;
+      if (this.chairBoredomState === 'kick_feet') {
+        desiredChannel = 'happy';
+        desiredWeight = 1.0;
       } else {
-        this.winkPulseElapsed += dt;
+        desiredChannel = 'none';
+        desiredWeight = 0;
       }
-      const wt = this.winkPulseElapsed;
-      if (wt < 0.10) {
-        targetWinkWeight = 0.95 * smoothStep(0, 0.10, wt);
-      } else if (wt < 0.36) {
-        targetWinkWeight = 0.95;
-      } else if (wt < 0.52) {
-        targetWinkWeight = 0.95 * (1 - smoothStep(0.36, 0.52, wt));
-      } else {
-        targetWinkWeight = 0;
-      }
-      // Once the wink opens, softly settle into a warm, natural two-eyes-open smile
-      if (wt >= 0.34) {
-        targetHappyWeight = 0.22 * smoothStep(0.34, 0.58, wt);
-      }
-    } else if (sofaTvFsmActive) {
-      // Strictly single-emotion native VRM expressions for each Sofa TV-watching FSM state
-      if (this.sofaTvState === 'shoulder_rest') {
-        targetRelaxedWeight = 0.58; // Peaceful cozy eyes resting on player's shoulder (pauses auto-blink!)
-      } else if (this.sofaTvState === 'scoot_closer') {
-        targetRelaxedWeight = 0.24;
-      } else if (this.sofaTvState === 'side_glance_smile') {
-        targetHappyWeight = 0.26;
-      } else if (this.sofaTvState === 'lean_interested') {
-        targetHappyWeight = 0.22;
+    } else if (sofaTvFsmActive && !this.poseTuner) {
+      if (this.sofaTvState === 'shoulder_rest' || this.sofaTvState === 'side_glance_smile') {
+        desiredChannel = 'happy';
+        desiredWeight = 1.0;
       } else if (this.sofaTvState === 'adjust_posture') {
         const normT = THREE.MathUtils.clamp(
           this.sofaTvStateElapsed / Math.max(0.01, this.sofaTvStateDuration),
           0,
           1
         );
-        if (normT < 0.48) {
-          targetSurprisedWeight = 0.20;
+        if (normT < 0.42) {
+          desiredChannel = 'surprised';
+          desiredWeight = 1.0;
         } else {
-          targetHappyWeight = 0.18;
+          desiredChannel = 'none';
+          desiredWeight = 0;
         }
+      } else {
+        desiredChannel = 'none';
+        desiredWeight = 0;
+      }
+    } else if (preset === 'wink' && !this.poseTuner) {
+      if (this.winkPulseElapsed < 0) {
+        this.winkPulseElapsed = 0;
+      } else if (this.activeExprChannel === 'blinkLeft') {
+        this.winkPulseElapsed += dt;
+      }
+      if (this.winkPulseElapsed < 0.34) {
+        desiredChannel = 'blinkLeft';
+        desiredWeight = 1.0;
+      } else {
+        desiredChannel = 'none';
+        desiredWeight = 0;
+      }
+    } else {
+      const baseWeights = HEROINE_EXPRESSIONS[preset] ?? HEROINE_EXPRESSIONS.neutral;
+      if (baseWeights.wink > 0) {
+        desiredChannel = 'blinkLeft';
+        desiredWeight = THREE.MathUtils.clamp(baseWeights.wink, 0, 1);
+      } else if (baseWeights.happy > 0) {
+        desiredChannel = 'happy';
+        desiredWeight = THREE.MathUtils.clamp(baseWeights.happy, 0, 1);
+      } else if (baseWeights.relaxed > 0) {
+        desiredChannel = 'relaxed';
+        desiredWeight = THREE.MathUtils.clamp(baseWeights.relaxed, 0, 1);
+      } else if (baseWeights.sad > 0) {
+        desiredChannel = 'sad';
+        desiredWeight = THREE.MathUtils.clamp(baseWeights.sad, 0, 1);
+      } else if (baseWeights.angry > 0) {
+        desiredChannel = 'angry';
+        desiredWeight = THREE.MathUtils.clamp(baseWeights.angry, 0, 1);
+      } else if (baseWeights.surprised > 0) {
+        desiredChannel = 'surprised';
+        desiredWeight = THREE.MathUtils.clamp(baseWeights.surprised, 0, 1);
+      } else {
+        desiredChannel = 'none';
+        desiredWeight = 0;
       }
     }
 
-    // Clear aggrieved micro-pout while toy gun is aimed (plus subtle furrow during flinch)
-    const targetSadWeight =
-      !this.poseTuner && this.toyGunPhase === 'pout'
-        ? 0.54
-        : !this.poseTuner && this.toyGunPhase === 'flinch'
-          ? 0.28
-          : baseWeights.sad;
-
-    const snapZero = (v: number) => (v < 0.002 ? 0 : v);
-    const exprLambda = 8.5;
-    this.currentHappy = snapZero(THREE.MathUtils.damp(this.currentHappy, targetHappyWeight, exprLambda, dt));
-    this.currentRelaxed = snapZero(THREE.MathUtils.damp(this.currentRelaxed, targetRelaxedWeight, exprLambda, dt));
-    this.currentSad = snapZero(THREE.MathUtils.damp(this.currentSad, targetSadWeight, exprLambda, dt));
-    this.currentAngry = snapZero(THREE.MathUtils.damp(this.currentAngry, baseWeights.angry, exprLambda, dt));
-    this.currentSurprised = snapZero(THREE.MathUtils.damp(this.currentSurprised, targetSurprisedWeight, exprLambda, dt));
-    this.currentWink = snapZero(THREE.MathUtils.damp(this.currentWink, targetWinkWeight, 22.0, dt));
-
-    // Clearly visible, natural anime syllabic lip-sync synced with dialogue typing!
+    // Lip-sync is ONLY active in pure neutral open-eyed speaking (`none`), so smiles & native
+    // VRM expressions NEVER mix with mouth vowel morphs (`微笑的时候嘴巴不要张开`).
     if (this.isSpeaking) {
       this.speakTailTimer = 0.22;
     } else if (this.speakTailTimer > 0) {
       this.speakTailTimer = Math.max(0, this.speakTailTimer - dt);
     }
 
+    const lipAllowed =
+      !this.poseTuner &&
+      desiredChannel === 'none' &&
+      this.activeExprChannel === 'none';
+
     let targetAa = 0;
     let targetIh = 0;
     let targetOu = 0;
     let targetEe = 0;
     let targetOh = 0;
-    const lipActive = (this.isSpeaking || this.speakTailTimer > 0) && !this.poseTuner;
+    const lipActive = lipAllowed && (this.isSpeaking || this.speakTailTimer > 0);
     if (lipActive) {
       this.speakPhase += dt * 13.4;
-      // Distinct syllabic open-close beats so her lips unmistakably open & close per character
       const primaryBeat = Math.pow(0.5 + 0.5 * Math.sin(this.speakPhase), 1.28);
       const accentMod = 0.68 + 0.32 * Math.sin(this.speakPhase * 0.53 + 0.9);
       const tailFade = this.isSpeaking ? 1.0 : THREE.MathUtils.clamp(this.speakTailTimer / 0.22, 0, 1);
-      const mouthExprWeight = Math.max(
-        this.currentHappy,
-        this.currentRelaxed,
-        this.currentSurprised
-      );
-      // High enough to read clearly from 1.5-2.5m away, softly tamed during smiles to avoid distortion
-      const peakAmp = 0.80 * (1 - mouthExprWeight * 0.28);
+      const peakAmp = 0.80;
       const amp = THREE.MathUtils.clamp(primaryBeat * accentMod * peakAmp * tailFade, 0, peakAmp);
       const vowelSlot = Math.floor((this.speakPhase * 0.38) % 6);
       if (vowelSlot === 0 || vowelSlot === 3) {
@@ -4252,14 +4752,76 @@ export class HeroineAvatarController {
       }
     }
 
-    const lipLambda = 22.0;
-    this.currentVowelAa = snapZero(THREE.MathUtils.damp(this.currentVowelAa, targetAa, lipLambda, dt));
-    this.currentVowelIh = snapZero(THREE.MathUtils.damp(this.currentVowelIh, targetIh, lipLambda, dt));
-    this.currentVowelOu = snapZero(THREE.MathUtils.damp(this.currentVowelOu, targetOu, lipLambda, dt));
-    this.currentVowelEe = snapZero(THREE.MathUtils.damp(this.currentVowelEe, targetEe, lipLambda, dt));
-    this.currentVowelOh = snapZero(THREE.MathUtils.damp(this.currentVowelOh, targetOh, lipLambda, dt));
+    const moveToward = (cur: number, dst: number, speed: number) => {
+      if (cur < dst) return Math.min(dst, cur + speed * dt);
+      if (cur > dst) return Math.max(dst, cur - speed * dt);
+      return dst;
+    };
 
-    // Smooth cheek blush fade-in / fade-out (also active during toy-gun pout, sofa FSM & reactions)
+    const lipRate = lipAllowed ? 9.5 : 13.5; // closes cleanly within ~0.07s before smile fades in
+    this.currentVowelAa = moveToward(this.currentVowelAa, targetAa, lipRate);
+    this.currentVowelIh = moveToward(this.currentVowelIh, targetIh, lipRate);
+    this.currentVowelOu = moveToward(this.currentVowelOu, targetOu, lipRate);
+    this.currentVowelEe = moveToward(this.currentVowelEe, targetEe, lipRate);
+    this.currentVowelOh = moveToward(this.currentVowelOh, targetOh, lipRate);
+
+    const maxMouthOpen = Math.max(
+      this.currentVowelAa,
+      this.currentVowelIh,
+      this.currentVowelOu,
+      this.currentVowelEe,
+      this.currentVowelOh
+    );
+
+    // Pause & cleanly close auto-blinking whenever any non-neutral expression is active/pending
+    const autoBlinkAllowed =
+      desiredChannel === 'none' && this.activeExprChannel === 'none';
+
+    if (!autoBlinkAllowed) {
+      this.blinkElapsed = -1;
+      this.currentBlink = moveToward(this.currentBlink, 0, 14.0);
+    }
+
+    // Non-overlapping sequential expression transition (`不要混合，切换表情再过渡`)
+    const fadeOutSpeed = 7.5; // ~0.13s clean fade out to 0
+    const fadeInSpeed = 6.2;  // ~0.16s smooth fade in to 1.0
+
+    if (desiredChannel !== this.activeExprChannel) {
+      if (this.activeExprChannel !== 'none' && this.activeExprLinear > 0) {
+        this.activeExprLinear = Math.max(0, this.activeExprLinear - fadeOutSpeed * dt);
+      } else {
+        this.activeExprLinear = 0;
+        // Wait until mouth vowels & auto-blink reach 0 before activating a native non-neutral expression
+        const faceClear =
+          desiredChannel === 'none' || (maxMouthOpen <= 0.004 && this.currentBlink <= 0.004);
+        if (faceClear) {
+          this.activeExprChannel = desiredChannel;
+          this.activeExprLinear = 0;
+        }
+      }
+    } else if (this.activeExprChannel !== 'none') {
+      if (this.activeExprLinear < desiredWeight) {
+        this.activeExprLinear = Math.min(desiredWeight, this.activeExprLinear + fadeInSpeed * dt);
+      } else if (this.activeExprLinear > desiredWeight) {
+        this.activeExprLinear = Math.max(desiredWeight, this.activeExprLinear - fadeOutSpeed * dt);
+      }
+    } else {
+      this.activeExprLinear = 0;
+    }
+
+    const activeWeight =
+      this.activeExprChannel === 'none'
+        ? 0
+        : smoothStep(0, 1, THREE.MathUtils.clamp(this.activeExprLinear, 0, 1));
+
+    this.currentHappy = this.activeExprChannel === 'happy' ? activeWeight : 0;
+    this.currentRelaxed = this.activeExprChannel === 'relaxed' ? activeWeight : 0;
+    this.currentSad = this.activeExprChannel === 'sad' ? activeWeight : 0;
+    this.currentAngry = this.activeExprChannel === 'angry' ? activeWeight : 0;
+    this.currentSurprised = this.activeExprChannel === 'surprised' ? activeWeight : 0;
+    this.currentWink = this.activeExprChannel === 'blinkLeft' ? activeWeight : 0;
+
+    // Smooth cheek blush fade-in / fade-out
     const sofaFsmBlush =
       this.sofaTvState === 'shoulder_rest'
         ? 0.44
@@ -4286,6 +4848,7 @@ export class HeroineAvatarController {
               : isCalmIdleState
                 ? 0
                 : THREE.MathUtils.clamp(this.activePerformance.blush ?? 0, 0, 1);
+    const snapZero = (v: number) => (v < 0.002 ? 0 : v);
     this.currentBlush = snapZero(THREE.MathUtils.damp(this.currentBlush, targetBlush, 4.8, dt));
 
     if (this.cheekBlushGroup && this.cheekBlushMat) {
@@ -4318,6 +4881,14 @@ export class HeroineAvatarController {
       }
     };
 
+    const setPresetWithAlias = (primary: string, alias: string, val: number) => {
+      if (expr.getExpression(primary)) {
+        expr.setValue(primary, THREE.MathUtils.clamp(val, 0, 1));
+      } else if (expr.getExpression(alias)) {
+        expr.setValue(alias, THREE.MathUtils.clamp(val, 0, 1));
+      }
+    };
+
     const setVowel = (vowel: 'aa' | 'ih' | 'ou' | 'ee' | 'oh', val: number) => {
       const names = this.lipSyncExprNames[vowel];
       if (names.length > 0) {
@@ -4329,11 +4900,13 @@ export class HeroineAvatarController {
       }
     };
 
-    safeSet('happy', this.currentHappy);
-    safeSet('relaxed', this.currentRelaxed);
-    safeSet('sad', this.currentSad);
+    // Write strictly exclusive native VRM emotion channels
+    setPresetWithAlias('happy', 'joy', this.currentHappy);
+    setPresetWithAlias('relaxed', 'fun', this.currentRelaxed);
+    setPresetWithAlias('sad', 'sorrow', this.currentSad);
     safeSet('angry', this.currentAngry);
     safeSet('surprised', this.currentSurprised);
+
     setVowel('aa', this.currentVowelAa);
     setVowel('ih', this.currentVowelIh);
     setVowel('ou', this.currentVowelOu);
@@ -4344,35 +4917,22 @@ export class HeroineAvatarController {
     safeSet('blush', this.currentBlush);
     safeSet('Blush', this.currentBlush);
 
-    // Suppress background auto-blinking when squeezing eyes shut (toy-gun flinch) or wink/heavy smile
-    const flinchShutEyes = !this.poseTuner && this.toyGunPhase === 'flinch';
-    const eyeClosingExprActive =
-      this.currentWink > 0.04 ||
-      this.currentHappy > 0.45 ||
-      this.currentRelaxed > 0.45;
-
-    const hasBlinkLeft = Boolean(expr.getExpression('blinkLeft'));
-    if (flinchShutEyes) {
-      this.blinkElapsed = -1;
-      this.currentBlink = THREE.MathUtils.damp(this.currentBlink, 1.0, 22.0, dt);
+    if (this.activeExprChannel === 'blink') {
+      this.currentBlink = activeWeight;
+      safeSet('blink', activeWeight);
+      setPresetWithAlias('blinkLeft', 'blink_l', 0);
+      setPresetWithAlias('blinkRight', 'blink_r', 0);
+    } else if (this.activeExprChannel === 'blinkLeft') {
+      safeSet('blink', 0);
+      setPresetWithAlias('blinkLeft', 'blink_l', activeWeight);
+      setPresetWithAlias('blinkRight', 'blink_r', 0);
+    } else if (!autoBlinkAllowed) {
       safeSet('blink', this.currentBlink);
-      if (hasBlinkLeft) {
-        safeSet('blinkLeft', 0);
-        safeSet('blinkRight', 0);
-      }
-    } else if (eyeClosingExprActive) {
-      this.blinkElapsed = -1;
-      this.currentBlink = snapZero(THREE.MathUtils.damp(this.currentBlink, 0, 18.0, dt));
-      safeSet('blink', this.currentBlink);
-      if (hasBlinkLeft) {
-        safeSet('blinkLeft', this.currentWink);
-        safeSet('blinkRight', 0);
-      }
+      setPresetWithAlias('blinkLeft', 'blink_l', 0);
+      setPresetWithAlias('blinkRight', 'blink_r', 0);
     } else {
-      if (hasBlinkLeft) {
-        safeSet('blinkLeft', 0);
-        safeSet('blinkRight', 0);
-      }
+      setPresetWithAlias('blinkLeft', 'blink_l', 0);
+      setPresetWithAlias('blinkRight', 'blink_r', 0);
       this.updateRandomBlinking(vrm, dt);
     }
   }
@@ -4555,6 +5115,7 @@ export class HeroineAvatarController {
     // Generous hysteresis so she gives the protagonist breathing space
     if (!this.isFollowMoving && distToPlayer > FOLLOW_START_DIST) {
       this.isFollowMoving = true;
+      this.walkStartElapsed = 0;
       this.isTurningInPlace = false;
       this.planPathTo(playerFeetPos.x, playerFeetPos.z, this.root.position.y);
     } else if (this.isFollowMoving && distToPlayer < FOLLOW_STOP_DIST) {
@@ -4565,6 +5126,7 @@ export class HeroineAvatarController {
 
     if (this.isFollowMoving) {
       this.walkUpperBodyStyle = 'normal';
+      this.walkStartElapsed += dt;
       this.pathReplanTimer -= dt;
       const goalMoved = Math.hypot(
         playerFeetPos.x - this.lastPlannedGoal.x,
@@ -4574,11 +5136,10 @@ export class HeroineAvatarController {
         this.planPathTo(playerFeetPos.x, playerFeetPos.z, this.root.position.y);
       }
 
-      const desiredSpeed = THREE.MathUtils.clamp(
-        1.28 + Math.max(0, distToPlayer - 2.4) * 0.40,
-        1.18,
-        2.35
-      );
+      const startRamp = smoothStep(0.08, 0.34, this.walkStartElapsed);
+      const desiredSpeed =
+        THREE.MathUtils.clamp(1.28 + Math.max(0, distToPlayer - 2.4) * 0.40, 1.18, 2.35) *
+        startRamp;
       const { actualSpeed } = this.advanceAlongActivePath(
         dt,
         desiredSpeed,
@@ -4586,7 +5147,7 @@ export class HeroineAvatarController {
         moveResolver
       );
 
-      if (actualSpeed < 0.14 && distToPlayer > FOLLOW_STOP_DIST + 0.35) {
+      if (actualSpeed < 0.14 && this.walkStartElapsed > 0.42 && distToPlayer > FOLLOW_STOP_DIST + 0.35) {
         this.followStuckTimer += dt;
         if (this.followStuckTimer > 0.65) {
           this.planPathTo(playerFeetPos.x, playerFeetPos.z, this.root.position.y);
@@ -4596,7 +5157,7 @@ export class HeroineAvatarController {
         this.followStuckTimer = 0;
       }
 
-      const animSpeed = Math.max(actualSpeed, 0.85);
+      const animSpeed = Math.max(actualSpeed, 0.42);
       if (!this.applyMixamoLocomotion(vrm, dt, true, animSpeed)) {
         if (this.activePoseDriver !== 'procedural_walk') {
           this.beginPoseDriverTransition('procedural_walk', 0.28);
@@ -4693,68 +5254,173 @@ export class HeroineAvatarController {
       this.standUpProgress = Math.min(1, this.standUpProgress + safeDt / this.standUpDuration);
       const t = this.standUpProgress;
 
-      // Biomechanical 4-phase bed-edge stand-up (zero horizontal floating/drifting!):
-      // Phase 1 (0.00..0.24): Torso leans forward over planted feet & loads thighs while hips stay on bed
-      // Phase 2 (0.24..0.68): Legs push off floor vertically onto planted foot line (Z = -2.80) with subtle upward momentum
-      // Phase 3 (0.68..0.86): Soft knee-absorption landing cushion (pelvis dips -2.4cm, knees bend slightly)
-      // Phase 4 (0.86..1.00): Gentle elastic rebound back to poised upright standing stance
-      let nextZ = BEDROOM_BED_SEAT_ANCHOR.z;
-      let nextY = this.seatedRootY;
-      let sitBlend = 1.0;
-      let forwardLean = 0.0;
+      // 2nd-Order Physics-Damped Biomechanical Stand-Up:
+      // 1) Strict sagittal alignment along `standUpStartYaw` -> ZERO lateral drift.
+      // 2) Stage 1 (t=0..0.36): Center of Mass (COM) shifts forward over feet with trunk lean BEFORE vertical rise,
+      //    while forefoot/toes contact floorboards and build subtle ground reaction pressure.
+      // 3) Stage 2 (t=0.36..0.78): Synchronized leg-drive push-off AFTER COM is stabilized forward.
+      // 4) Stage 3 (t=0.78..1.00): Critically damped physics cushion absorbs vertical inertia cleanly into standing.
+      const fwdX = Math.sin(this.standUpStartYaw);
+      const fwdZ = Math.cos(this.standUpStartYaw);
+      this.root.rotation.y = this.standUpStartYaw;
 
-      if (t < 0.24) {
-        const p = smoothStep(0.0, 0.24, t);
-        nextZ = THREE.MathUtils.lerp(BEDROOM_BED_SEAT_ANCHOR.z, BEDROOM_BED_SEAT_ANCHOR.z + 0.075, p);
-        nextY = this.seatedRootY - Math.sin(p * Math.PI * 0.5) * 0.012;
-        sitBlend = 1.0 + p * 0.04;
-        forwardLean = p * 0.44;
-      } else if (t < 0.68) {
-        const p = smoothStep(0.24, 0.68, t);
-        // Shift pelvis directly over planted feet while pushing upward cleanly
-        const zCurve = Math.pow(p, 0.85);
-        nextZ = THREE.MathUtils.lerp(
-          BEDROOM_BED_SEAT_ANCHOR.z + 0.075,
-          BEDROOM_STAND_OFF_BED_Z,
-          zCurve
+      const p1 = smoothStep(0.0, 0.36, t);
+      const p2 = smoothStep(0.36, 0.78, t);
+      const p3 = smoothStep(0.76, 1.0, t);
+
+      const targetForwardShift =
+        t < 0.36
+          ? this.standUpForwardDist * 0.64 * p1
+          : this.standUpForwardDist * (0.64 + 0.36 * smoothStep(0.36, 0.84, t));
+
+      // Heavily damped 2nd-order spring for COM sagittal shift (zero overshoot or residual slide)
+      const accelCom = 116.0 * (targetForwardShift - this.standUpComFwd) - 24.0 * this.standUpComVelFwd;
+      this.standUpComVelFwd += accelCom * safeDt;
+      this.standUpComFwd = THREE.MathUtils.clamp(
+        this.standUpComFwd + this.standUpComVelFwd * safeDt,
+        0,
+        this.standUpForwardDist
+      );
+
+      // Keep vertical sitBlend low until COM shifts squarely forward onto feet (t >= 0.36)
+      const sitBlend =
+        t < 0.36
+          ? THREE.MathUtils.lerp(1.0, 0.84, p1)
+          : t < 0.78
+            ? THREE.MathUtils.lerp(0.84, 0.04, Math.pow(p2, 0.92))
+            : THREE.MathUtils.lerp(0.04, 0.0, p3);
+
+      const forwardLean =
+        t < 0.36
+          ? 0.56 * smoothStep(0.0, 0.32, t)
+          : t < 0.78
+            ? THREE.MathUtils.lerp(0.56, 0.14, p2)
+            : THREE.MathUtils.lerp(0.14, 0.0, p3);
+
+      // Ground reaction & foot pressure feedback
+      const toePreload = smoothStep(0.06, 0.36, t);
+      const pushEnv = Math.sin(p2 * Math.PI);
+      const settleEnv = Math.sin(p3 * Math.PI);
+      this.standUpGroundLoad = THREE.MathUtils.clamp(toePreload * 0.45 + pushEnv * 0.85, 0, 1);
+
+      const targetKneeCushion =
+        0.065 * Math.sin(smoothStep(0.20, 0.44, t) * Math.PI) +
+        0.048 * settleEnv;
+      const accelKnee = 122.0 * (targetKneeCushion - this.standUpKneeSpring) - 19.5 * this.standUpKneeVel;
+      this.standUpKneeVel += accelKnee * safeDt;
+      this.standUpKneeSpring += this.standUpKneeVel * safeDt;
+
+      const reachR = smoothStep(0.03, 0.28, t);
+      const reachL = smoothStep(0.06, 0.32, t);
+      const toeTouchWindow = Math.sin(smoothStep(0.10, 0.44, t) * Math.PI);
+      const settleTapEnv = Math.sin(smoothStep(0.74, 0.98, t) * Math.PI);
+
+      const footwork: StandUpFootworkState = {
+        hipRoll: -0.014 * Math.sin(p1 * Math.PI) + 0.016 * pushEnv - 0.010 * settleEnv,
+        leftHipPitchAdd: -0.04 * Math.sin(reachL * Math.PI) - this.standUpKneeSpring * 0.45,
+        rightHipPitchAdd: 0.035 * Math.sin(reachR * Math.PI) - this.standUpKneeSpring * 0.45,
+        leftKneeAdd: 0.05 * Math.sin(reachL * Math.PI) + this.standUpKneeSpring,
+        rightKneeAdd: -0.03 * Math.sin(reachR * Math.PI) + this.standUpKneeSpring + 0.025 * settleTapEnv,
+        leftAnklePitch:
+          0.16 * Math.sin(reachL * Math.PI) - 0.19 * pushEnv - this.standUpKneeSpring * 0.65,
+        rightAnklePitch:
+          0.18 * Math.sin(reachR * Math.PI) -
+          0.18 * pushEnv -
+          this.standUpKneeSpring * 0.65 +
+          0.05 * settleTapEnv,
+        leftAnkleRoll: 0.014 * pushEnv,
+        rightAnkleRoll: -0.014 * pushEnv + 0.012 * settleTapEnv,
+        leftToesPitch: -0.24 * toeTouchWindow - 0.14 * this.standUpGroundLoad,
+        rightToesPitch: -0.26 * toeTouchWindow - 0.14 * this.standUpGroundLoad - 0.08 * settleTapEnv,
+        armPushBrace: Math.sin(smoothStep(0.04, 0.58, t) * Math.PI),
+      };
+
+      const posX = BEDROOM_BED_SEAT_ANCHOR.x + fwdX * this.standUpComFwd;
+      const posZ = BEDROOM_BED_SEAT_ANCHOR.z + fwdZ * this.standUpComFwd;
+
+      this.applyProceduralSeatedPose(
+        this.vrm,
+        elapsed,
+        sitBlend,
+        undefined,
+        forwardLean,
+        footwork
+      );
+
+      // Dynamic floor-contact pelvis solver + planted-foot XZ lock (zero foot slip)
+      this.root.position.set(posX, 0, posZ);
+      this.vrm.humanoid.update();
+      this.root.updateMatrixWorld(true);
+
+      let lowestFootOffset = 0;
+      let finalPosX = posX;
+      let finalPosZ = posZ;
+      const lFootNode = this.vrm.humanoid.getNormalizedBoneNode('leftFoot');
+      const rFootNode = this.vrm.humanoid.getNormalizedBoneNode('rightFoot');
+      if (lFootNode && rFootNode) {
+        lFootNode.getWorldPosition(_leftLegWorldPos);
+        rFootNode.getWorldPosition(_rightLegWorldPos);
+        lowestFootOffset = Math.min(
+          _leftLegWorldPos.y - this.vrmStandingFootHeight,
+          _rightLegWorldPos.y - this.vrmStandingFootHeight
         );
-        const riseOvershoot = Math.sin(p * Math.PI * 0.5) * 0.020 * p;
-        nextY = THREE.MathUtils.lerp(this.seatedRootY - 0.012, 0.0, Math.pow(p, 0.92)) + riseOvershoot;
-        sitBlend = THREE.MathUtils.lerp(1.04, 0.05, Math.pow(p, 0.90));
-        // Maintain forward counterbalance through mid-push, then unfold spine gracefully
-        forwardLean = THREE.MathUtils.lerp(0.44, 0.06, smoothStep(0.20, 1.0, p));
-      } else if (t < 0.86) {
-        const p = smoothStep(0.68, 0.86, t);
-        nextZ = BEDROOM_STAND_OFF_BED_Z;
-        // Soft standing stabilization cushion (knees absorb momentum slightly)
-        const dipEnv = Math.sin(p * Math.PI * 0.5);
-        nextY = THREE.MathUtils.lerp(0.020, -0.024, dipEnv);
-        sitBlend = THREE.MathUtils.lerp(0.05, 0.135, dipEnv);
-        forwardLean = THREE.MathUtils.lerp(0.06, 0.095, dipEnv);
-      } else {
-        const p = smoothStep(0.86, 1.0, t);
-        nextZ = BEDROOM_STAND_OFF_BED_Z;
-        // Subtle elastic rebound & upright poise settling
-        const reboundWave = Math.sin(p * Math.PI) * 0.008;
-        nextY = THREE.MathUtils.lerp(-0.024, 0.0, p) + reboundWave;
-        sitBlend = THREE.MathUtils.lerp(0.135, 0.0, p);
-        forwardLean = THREE.MathUtils.lerp(0.095, 0.0, p) - Math.sin(p * Math.PI) * 0.032;
+        if (t >= 0.20) {
+          const avgFootX = (_leftLegWorldPos.x + _rightLegWorldPos.x) * 0.5;
+          const avgFootZ = (_leftLegWorldPos.z + _rightLegWorldPos.z) * 0.5;
+          if (!this.standUpPlantedCaptured) {
+            this.standUpPlantedFootWorld.set(avgFootX, 0, avgFootZ);
+            this.standUpPlantedCaptured = true;
+          } else {
+            const errSag =
+              (this.standUpPlantedFootWorld.x - avgFootX) * fwdX +
+              (this.standUpPlantedFootWorld.z - avgFootZ) * fwdZ;
+            const pinFade = 1 - smoothStep(0.92, 1.0, t);
+            const pinFwd = THREE.MathUtils.clamp(errSag, -0.18, 0.18) * pinFade;
+            finalPosX = posX + fwdX * pinFwd;
+            finalPosZ = posZ + fwdZ * pinFwd;
+          }
+        }
+      }
+      if (this.hasStandingToesBone) {
+        const lToesNode = this.vrm.humanoid.getNormalizedBoneNode('leftToes');
+        const rToesNode = this.vrm.humanoid.getNormalizedBoneNode('rightToes');
+        if (lToesNode && rToesNode) {
+          lToesNode.getWorldPosition(_leftLegWorldPos);
+          rToesNode.getWorldPosition(_rightLegWorldPos);
+          lowestFootOffset = Math.min(
+            lowestFootOffset,
+            _leftLegWorldPos.y - this.vrmStandingToesHeight,
+            _rightLegWorldPos.y - this.vrmStandingToesHeight
+          );
+        }
       }
 
-      this.root.position.set(BEDROOM_BED_SEAT_ANCHOR.x, nextY, nextZ);
+      const groundLockedRootY = THREE.MathUtils.clamp(-lowestFootOffset, -0.55, 0.06);
+      // Slight ground-pressure preload dip before vertical push-off (`t < 0.36`)
+      const bedSupportY = THREE.MathUtils.lerp(
+        this.seatedRootY,
+        this.seatedRootY - 0.018,
+        smoothStep(0.06, 0.34, t)
+      );
+      const targetRootY =
+        t < 0.36
+          ? Math.max(bedSupportY, groundLockedRootY)
+          : THREE.MathUtils.lerp(
+              Math.max(bedSupportY, groundLockedRootY),
+              groundLockedRootY,
+              smoothStep(0.36, 0.48, t)
+            );
 
-      // Keep facing naturally straight off the bed during push-off, then gently orient toward walk goal once upright
-      if (t > 0.64) {
-        const desiredYaw = Math.atan2(
-          this.walkTargetPos.x - this.root.position.x,
-          this.walkTargetPos.z - this.root.position.z
-        );
-        const yawDelta = shortestAngleDelta(this.root.rotation.y, desiredYaw);
-        const turnWeight = smoothStep(0.64, 1.0, t);
-        this.root.rotation.y += yawDelta * Math.min(1, safeDt * 4.2 * turnWeight);
-      }
+      // Critically damped spring buffer on vertical pelvis lift for organic foot-ground push-off
+      const accelY = 132.0 * (targetRootY - this.standUpPelvisY) - 22.0 * this.standUpPelvisVelY;
+      this.standUpPelvisVelY += accelY * safeDt;
+      this.standUpPelvisY += this.standUpPelvisVelY * safeDt;
+      // Never penetrate floor below ground-locked contact, and converge cleanly to y=0 at settle
+      const dampedY = Math.max(this.standUpPelvisY, groundLockedRootY - 0.004);
+      this.standUpPelvisY = dampedY;
+      const settledY = THREE.MathUtils.lerp(dampedY, 0, smoothStep(0.78, 1.0, t));
 
-      this.applyProceduralSeatedPose(this.vrm, elapsed, Math.min(1, sitBlend), undefined, forwardLean);
+      this.root.position.set(finalPosX, settledY, finalPosZ);
 
       // Keep seated colliders smoothly guiding the skirt off the mattress until knees straighten past 75%
       if (sitBlend > 0.25 && this.seatedColliders.length > 0) {
@@ -4769,8 +5435,10 @@ export class HeroineAvatarController {
         if (this.seatedColliders.length > 0) {
           this.restoreStandingSkirtPhysics();
         }
-        this.root.position.set(BEDROOM_BED_SEAT_ANCHOR.x, 0, BEDROOM_STAND_OFF_BED_Z);
-        // Re-evaluate live player position in case the player walked around while she was standing up!
+        this.standUpComVelFwd = 0;
+        this.standUpPelvisVelY = 0;
+        // Keep exact settled sagittal stand-off position (zero teleport snap!)
+        this.root.position.set(finalPosX, 0, finalPosZ);
         if (playerFeetWorldPos && playerRoom === 'bedroom') {
           const rdx = this.root.position.x - playerFeetWorldPos.x;
           const rdz = this.root.position.z - playerFeetWorldPos.z;
@@ -4787,9 +5455,40 @@ export class HeroineAvatarController {
           );
           this.walkTargetPos.set(gx, 0, gz);
         }
-        this.planPathTo(this.walkTargetPos.x, this.walkTargetPos.z, 0);
-        this.postureState = 'walking_to_player';
-        this.walkPhase = 0;
+
+        // Seed bone dampers cleanly at relaxed standing idle (NEVER clear to T-pose!)
+        this.seedSmoothedBonesToIdle();
+        const distToGoal = Math.hypot(
+          this.walkTargetPos.x - this.root.position.x,
+          this.walkTargetPos.z - this.root.position.z
+        );
+        const distToPlayerFeet =
+          playerFeetWorldPos && playerRoom === 'bedroom'
+            ? Math.hypot(
+                playerFeetWorldPos.x - this.root.position.x,
+                playerFeetWorldPos.z - this.root.position.z
+              )
+            : Infinity;
+
+        // If already comfortably close (~< 0.94m from goal or player within ~1.65m), transition
+        // smoothly into in-place greeting_wave with both feet planted instead of a micro-slide step!
+        if (distToGoal < 0.94 || (distToPlayerFeet >= 0.85 && distToPlayerFeet < 1.65)) {
+          this.postureState = 'greeting_wave';
+          this.greetingWaveElapsed = 0;
+          this.greetingWaveDuration = 2.15;
+          this.gestureElapsed = 0;
+          this.standingGestureBlend = 0;
+          this.isTurningInPlace = true;
+          if (!this.actions.idle) {
+            this.beginPoseDriverTransition('procedural_standing', 0.36);
+            this.zeroLocomotionMixerWeights();
+          }
+        } else {
+          this.planPathTo(this.walkTargetPos.x, this.walkTargetPos.z, 0);
+          this.postureState = 'walking_to_player';
+          this.walkPhase = 0;
+          this.walkStartElapsed = 0;
+        }
       }
     } else if (this.postureState === 'walking_to_player') {
       if (this.seatedColliders.length > 0) {
@@ -4823,11 +5522,14 @@ export class HeroineAvatarController {
         }
       }
 
+      this.walkStartElapsed += safeDt;
+      const startRamp = smoothStep(0.08, 0.34, this.walkStartElapsed);
       const distGoal = Math.hypot(
         this.walkTargetPos.x - this.root.position.x,
         this.walkTargetPos.z - this.root.position.z
       );
-      const walkSpeed = Math.min(1.26, Math.max(0.72, distGoal * 1.48));
+      const walkSpeed =
+        Math.min(1.26, Math.max(0.72, distGoal * 1.48)) * startRamp;
       const { arrived, actualSpeed } = this.advanceAlongActivePath(
         safeDt,
         walkSpeed,
@@ -4837,7 +5539,7 @@ export class HeroineAvatarController {
 
       if (arrived || distGoal <= 0.16) {
         this.root.position.y = 0;
-        // Transition into natural squint-smile greeting wave before beginning dialogue!
+        // Transition seamlessly into gentle greeting_wave without clearing smoothed bones!
         this.postureState = 'greeting_wave';
         this.greetingWaveElapsed = 0;
         this.greetingWaveDuration = 2.15;
@@ -4848,18 +5550,25 @@ export class HeroineAvatarController {
           this.applyMixamoLocomotion(this.vrm, safeDt, false, 0);
         } else {
           if (this.activePoseDriver !== 'procedural_standing') {
-            this.beginPoseDriverTransition('procedural_standing', 0.34);
-            this.smoothedBoneEuler.clear();
+            this.beginPoseDriverTransition('procedural_standing', 0.36);
             this.zeroLocomotionMixerWeights();
           }
-          this.applyStandingGesturePose(this.vrm, safeDt, elapsed);
+          this.applyStandingGesturePose(
+            this.vrm,
+            safeDt,
+            elapsed,
+            HEROINE_POSES.wave,
+            true,
+            false,
+            0
+          );
         }
       } else {
-        const animSpeed = Math.max(actualSpeed, 0.78);
+        const animSpeed = Math.max(actualSpeed, 0.42);
         if (!this.applyMixamoLocomotion(this.vrm, safeDt, true, animSpeed)) {
           if (this.activePoseDriver !== 'procedural_walk') {
-            this.beginPoseDriverTransition('procedural_walk', 0.28);
-            this.smoothedBoneEuler.clear();
+            this.beginPoseDriverTransition('procedural_walk', 0.26);
+            this.seedSmoothedBonesToIdle();
             this.zeroLocomotionMixerWeights();
           }
           this.walkPhase += safeDt * animSpeed * 6.4;
@@ -4867,7 +5576,7 @@ export class HeroineAvatarController {
         }
       }
     } else if (this.postureState === 'greeting_wave') {
-      // Squint-smile wave greeting (0..1.38s cheerful wave + squinting smile -> 1.38..2.15s eyes open & arm lowers)
+      // Smooth continuous greeting wave (0..0.42s raise -> 0.42..1.48s cheerful wave -> 1.48..2.15s lower smoothly)
       if (this.seatedColliders.length > 0) {
         this.restoreStandingSkirtPhysics();
       }
@@ -4884,16 +5593,15 @@ export class HeroineAvatarController {
       }
 
       const wavePose = HEROINE_POSES.wave;
-      // Raise hand cleanly (0..0.34s), wave 2-3 times (0.34..1.42s), lower gently (1.42..2.05s)
       const gt = this.greetingWaveElapsed;
       const waveBlend =
-        gt < 0.34
-          ? smoothStep(0, 0.34, gt)
-          : gt < 1.42
+        gt < 0.42
+          ? smoothStep(0, 0.42, gt)
+          : gt < 1.48
             ? 1.0
-            : 1.0 - smoothStep(1.42, 2.05, gt);
+            : 1.0 - smoothStep(1.48, 2.08, gt);
 
-      this.standingGestureBlend = THREE.MathUtils.damp(this.standingGestureBlend, waveBlend, 10.5, safeDt);
+      this.standingGestureBlend = THREE.MathUtils.damp(this.standingGestureBlend, waveBlend, 8.5, safeDt);
       const waveOsc = Math.sin(Math.max(0, gt - 0.16) * (wavePose.waveMotion?.speed ?? 6.8)) * this.standingGestureBlend;
 
       if (this.actions.idle) {
@@ -4903,11 +5611,20 @@ export class HeroineAvatarController {
         }
       } else {
         if (this.activePoseDriver !== 'procedural_standing') {
-          this.beginPoseDriverTransition('procedural_standing', 0.30);
-          this.smoothedBoneEuler.clear();
+          this.beginPoseDriverTransition('procedural_standing', 0.34);
+          this.seedSmoothedBonesToIdle();
           this.zeroLocomotionMixerWeights();
         }
-        this.applyStandingGesturePose(this.vrm, safeDt, elapsed, wavePose, gt < 1.55);
+        // Pass isTuningOverride=false + externalWaveBlend so arm lifts smoothly from relaxed idle (never snaps!)
+        this.applyStandingGesturePose(
+          this.vrm,
+          safeDt,
+          elapsed,
+          wavePose,
+          gt < 1.65,
+          false,
+          this.standingGestureBlend
+        );
       }
 
       if (this.greetingWaveElapsed >= this.greetingWaveDuration) {
@@ -4922,11 +5639,14 @@ export class HeroineAvatarController {
       if (this.seatedColliders.length > 0) {
         this.restoreStandingSkirtPhysics();
       }
+      this.walkStartElapsed += safeDt;
+      const startRamp = smoothStep(0.08, 0.32, this.walkStartElapsed);
       const distGoal = Math.hypot(
         this.walkTargetPos.x - this.root.position.x,
         this.walkTargetPos.z - this.root.position.z
       );
-      const desiredSpeed = this.walkUpperBodyStyle === 'arms_crossed' ? 1.08 : 1.24;
+      const desiredSpeed =
+        (this.walkUpperBodyStyle === 'arms_crossed' ? 1.08 : 1.24) * startRamp;
       const { arrived, actualSpeed } = this.advanceAlongActivePath(
         safeDt,
         desiredSpeed,
@@ -4935,7 +5655,7 @@ export class HeroineAvatarController {
       );
 
       // Fail-safe against tight furniture stall during staged walk
-      if (actualSpeed < 0.08 && !arrived) {
+      if (actualSpeed < 0.08 && this.walkStartElapsed > 0.42 && !arrived) {
         this.followStuckTimer += safeDt;
       } else {
         this.followStuckTimer = 0;
@@ -4962,7 +5682,7 @@ export class HeroineAvatarController {
           this.applyStandingGesturePose(this.vrm, safeDt, elapsed);
         }
       } else {
-        const animSpeed = Math.max(actualSpeed, 0.78);
+        const animSpeed = Math.max(actualSpeed, 0.42);
         if (!this.applyMixamoLocomotion(this.vrm, safeDt, true, animSpeed)) {
           if (this.activePoseDriver !== 'procedural_walk') {
             this.beginPoseDriverTransition('procedural_walk', 0.28);
@@ -5107,16 +5827,27 @@ export class HeroineAvatarController {
         this.chairTransitionProgress + safeDt / this.chairTransitionDuration
       );
       const t = this.chairTransitionProgress;
-      const xzEase = smoothStep(0.0, 0.62, t);
-      const yEase = smoothStep(0.18, 1.0, t);
-      const sitBlend = 1 - smoothStep(0.12, 1.0, t);
-      const forwardLean = Math.sin(Math.pow(t, 0.72) * Math.PI) * 0.36;
+      const p1 = smoothStep(0.0, 0.34, t);
+      const p2 = smoothStep(0.32, 0.88, t);
+      const p3 = smoothStep(0.84, 1.0, t);
+      const xzEase = 0.65 * p1 + 0.35 * p2;
+      const yEase = t < 0.32 ? 0.08 * p1 : 0.08 + 0.92 * smoothStep(0.32, 0.92, t);
+      const sitBlend =
+        t < 0.32
+          ? THREE.MathUtils.lerp(1.0, 0.86, p1)
+          : t < 0.88
+            ? THREE.MathUtils.lerp(0.86, 0.02, p2)
+            : THREE.MathUtils.lerp(0.02, 0.0, p3);
+      const forwardLean =
+        t < 0.34
+          ? 0.48 * smoothStep(0.0, 0.32, t)
+          : THREE.MathUtils.lerp(0.48, 0.0, smoothStep(0.34, 0.94, t));
 
-      this.root.position.set(
-        THREE.MathUtils.lerp(this.chairStandStartPos.x, this.chairEntryPos.x, xzEase),
-        THREE.MathUtils.lerp(this.chairStandStartPos.y, this.chairEntryPos.y, yEase),
-        THREE.MathUtils.lerp(this.chairStandStartPos.z, this.chairEntryPos.z, xzEase)
-      );
+      const baseX = THREE.MathUtils.lerp(this.chairStandStartPos.x, this.chairEntryPos.x, xzEase);
+      const baseY = THREE.MathUtils.lerp(this.chairStandStartPos.y, this.chairEntryPos.y, yEase);
+      const baseZ = THREE.MathUtils.lerp(this.chairStandStartPos.z, this.chairEntryPos.z, xzEase);
+      this.root.position.set(baseX, baseY, baseZ);
+
       if (sitBlend > 0.30 && this.seatedColliders.length > 0) {
         this.setSeatedSkirtSlideDamping(true);
         this.positionSeatedColliders(sitBlend);
@@ -5125,12 +5856,38 @@ export class HeroineAvatarController {
         this.restoreStandingSkirtPhysics();
       }
       this.applyChairSeatedPose(this.vrm, safeDt, elapsed, sitBlend, forwardLean);
+      this.vrm.humanoid.update();
+      this.root.updateMatrixWorld(true);
+
+      let finalX = baseX;
+      let finalZ = baseZ;
+      const lFoot = this.vrm.humanoid.getNormalizedBoneNode('leftFoot');
+      const rFoot = this.vrm.humanoid.getNormalizedBoneNode('rightFoot');
+      if (lFoot && rFoot && t >= 0.18) {
+        lFoot.getWorldPosition(_leftLegWorldPos);
+        rFoot.getWorldPosition(_rightLegWorldPos);
+        const avgFootX = (_leftLegWorldPos.x + _rightLegWorldPos.x) * 0.5;
+        const avgFootZ = (_leftLegWorldPos.z + _rightLegWorldPos.z) * 0.5;
+        if (!this.standUpPlantedCaptured) {
+          this.standUpPlantedFootWorld.set(avgFootX, 0, avgFootZ);
+          this.standUpPlantedCaptured = true;
+        } else {
+          const pinFade = 1 - smoothStep(0.90, 1.0, t);
+          const dxPin = THREE.MathUtils.clamp(this.standUpPlantedFootWorld.x - avgFootX, -0.18, 0.18) * pinFade;
+          const dzPin = THREE.MathUtils.clamp(this.standUpPlantedFootWorld.z - avgFootZ, -0.18, 0.18) * pinFade;
+          finalX = baseX + dxPin;
+          finalZ = baseZ + dzPin;
+          this.root.position.set(finalX, baseY, finalZ);
+        }
+      }
 
       if (this.chairTransitionProgress >= 1) {
         if (this.seatedColliders.length > 0) {
           this.restoreStandingSkirtPhysics();
         }
-        this.root.position.copy(this.chairEntryPos);
+        this.root.position.set(finalX, this.chairEntryPos.y, finalZ);
+        this.seedSmoothedBonesToIdle();
+        this.walkStartElapsed = 0;
         this.postureState = 'standing_talking';
         this.isTurningInPlace = true;
         const cb = this.onChairTransitionDone;
@@ -5141,9 +5898,11 @@ export class HeroineAvatarController {
       if (this.seatedColliders.length > 0) {
         this.restoreStandingSkirtPhysics();
       }
+      this.walkStartElapsed += safeDt;
+      const startRamp = smoothStep(0.08, 0.32, this.walkStartElapsed);
       const { arrived, actualSpeed } = this.advanceAlongActivePath(
         safeDt,
-        1.52,
+        1.52 * startRamp,
         0.24,
         moveResolver
       );
@@ -5151,7 +5910,7 @@ export class HeroineAvatarController {
         this.activePath = [];
         this.startSofaSitDownTransition();
       } else if (this.actions.walk) {
-        this.applyMixamoLocomotion(this.vrm, safeDt, true, actualSpeed);
+        this.applyMixamoLocomotion(this.vrm, safeDt, true, Math.max(actualSpeed, 0.42));
       } else {
         if (this.activePoseDriver !== 'procedural_walk') {
           this.beginPoseDriverTransition('procedural_walk', 0.22);
@@ -5229,16 +5988,27 @@ export class HeroineAvatarController {
         this.sofaTransitionProgress + safeDt / this.sofaTransitionDuration
       );
       const t = this.sofaTransitionProgress;
-      const xzEase = smoothStep(0.0, 0.62, t);
-      const yEase = smoothStep(0.18, 1.0, t);
-      const sitBlend = 1 - smoothStep(0.12, 1.0, t);
-      const forwardLean = Math.sin(Math.pow(t, 0.72) * Math.PI) * 0.36;
+      const p1 = smoothStep(0.0, 0.34, t);
+      const p2 = smoothStep(0.32, 0.88, t);
+      const p3 = smoothStep(0.84, 1.0, t);
+      const xzEase = 0.65 * p1 + 0.35 * p2;
+      const yEase = t < 0.32 ? 0.08 * p1 : 0.08 + 0.92 * smoothStep(0.32, 0.92, t);
+      const sitBlend =
+        t < 0.32
+          ? THREE.MathUtils.lerp(1.0, 0.86, p1)
+          : t < 0.88
+            ? THREE.MathUtils.lerp(0.86, 0.02, p2)
+            : THREE.MathUtils.lerp(0.02, 0.0, p3);
+      const forwardLean =
+        t < 0.34
+          ? 0.48 * smoothStep(0.0, 0.32, t)
+          : THREE.MathUtils.lerp(0.48, 0.0, smoothStep(0.34, 0.94, t));
 
-      this.root.position.set(
-        THREE.MathUtils.lerp(this.sofaStandStartPos.x, this.sofaEntryPos.x, xzEase),
-        THREE.MathUtils.lerp(this.sofaStandStartPos.y, this.sofaEntryPos.y, yEase),
-        THREE.MathUtils.lerp(this.sofaStandStartPos.z, this.sofaEntryPos.z, xzEase)
-      );
+      const baseX = THREE.MathUtils.lerp(this.sofaStandStartPos.x, this.sofaEntryPos.x, xzEase);
+      const baseY = THREE.MathUtils.lerp(this.sofaStandStartPos.y, this.sofaEntryPos.y, yEase);
+      const baseZ = THREE.MathUtils.lerp(this.sofaStandStartPos.z, this.sofaEntryPos.z, xzEase);
+      this.root.position.set(baseX, baseY, baseZ);
+
       if (sitBlend > 0.30 && this.seatedColliders.length > 0) {
         this.setSeatedSkirtSlideDamping(true);
         this.positionSeatedColliders(sitBlend);
@@ -5247,13 +6017,39 @@ export class HeroineAvatarController {
         this.restoreStandingSkirtPhysics();
       }
       this.applyChairSeatedPose(this.vrm, safeDt, elapsed, sitBlend, forwardLean);
+      this.vrm.humanoid.update();
+      this.root.updateMatrixWorld(true);
+
+      let finalX = baseX;
+      let finalZ = baseZ;
+      const lFoot = this.vrm.humanoid.getNormalizedBoneNode('leftFoot');
+      const rFoot = this.vrm.humanoid.getNormalizedBoneNode('rightFoot');
+      if (lFoot && rFoot && t >= 0.18) {
+        lFoot.getWorldPosition(_leftLegWorldPos);
+        rFoot.getWorldPosition(_rightLegWorldPos);
+        const avgFootX = (_leftLegWorldPos.x + _rightLegWorldPos.x) * 0.5;
+        const avgFootZ = (_leftLegWorldPos.z + _rightLegWorldPos.z) * 0.5;
+        if (!this.standUpPlantedCaptured) {
+          this.standUpPlantedFootWorld.set(avgFootX, 0, avgFootZ);
+          this.standUpPlantedCaptured = true;
+        } else {
+          const pinFade = 1 - smoothStep(0.90, 1.0, t);
+          const dxPin = THREE.MathUtils.clamp(this.standUpPlantedFootWorld.x - avgFootX, -0.18, 0.18) * pinFade;
+          const dzPin = THREE.MathUtils.clamp(this.standUpPlantedFootWorld.z - avgFootZ, -0.18, 0.18) * pinFade;
+          finalX = baseX + dxPin;
+          finalZ = baseZ + dzPin;
+          this.root.position.set(finalX, baseY, finalZ);
+        }
+      }
 
       if (this.sofaTransitionProgress >= 1) {
         if (this.seatedColliders.length > 0) {
           this.restoreStandingSkirtPhysics();
         }
         this.resetSofaTvStateMachine(true);
-        this.root.position.copy(this.sofaEntryPos);
+        this.root.position.set(finalX, this.sofaEntryPos.y, finalZ);
+        this.seedSmoothedBonesToIdle();
+        this.walkStartElapsed = 0;
         this.postureState = 'following_player';
         this.lastPlannedGoal.set(999, 0, 999);
         const cb = this.onSofaTransitionDone;
@@ -5288,6 +6084,7 @@ export class HeroineAvatarController {
 
         if (!this.isBedroomDialogueFollowing && distPlayer > 2.35) {
           this.isBedroomDialogueFollowing = true;
+          this.walkStartElapsed = 0;
           this.isTurningInPlace = false;
           this.walkUpperBodyStyle = 'normal';
           this.planPathTo(clampedPx, clampedPz, 0);
@@ -5297,6 +6094,7 @@ export class HeroineAvatarController {
         }
 
         if (this.isBedroomDialogueFollowing) {
+          this.walkStartElapsed += safeDt;
           this.pathReplanTimer -= safeDt;
           const goalDrift = Math.hypot(
             clampedPx - this.lastPlannedGoal.x,
@@ -5305,9 +6103,11 @@ export class HeroineAvatarController {
           if (this.pathReplanTimer <= 0 || goalDrift > 0.65 || this.activePath.length === 0) {
             this.planPathTo(clampedPx, clampedPz, 0);
           }
-          const followSpd = THREE.MathUtils.clamp(1.12 + Math.max(0, distPlayer - 2.0) * 0.35, 1.05, 1.85);
+          const startRamp = smoothStep(0.08, 0.32, this.walkStartElapsed);
+          const followSpd =
+            THREE.MathUtils.clamp(1.12 + Math.max(0, distPlayer - 2.0) * 0.35, 1.05, 1.85) * startRamp;
           const { actualSpeed } = this.advanceAlongActivePath(safeDt, followSpd, 0.24, moveResolver);
-          const animSpeed = Math.max(actualSpeed, 0.80);
+          const animSpeed = Math.max(actualSpeed, 0.42);
           if (!this.applyMixamoLocomotion(this.vrm, safeDt, true, animSpeed)) {
             if (this.activePoseDriver !== 'procedural_walk') {
               this.beginPoseDriverTransition('procedural_walk', 0.28);
@@ -5430,14 +6230,154 @@ export class HeroineAvatarController {
       this.updateSeatedCollidersWorldMatrix();
     }
 
+    // 4.5 Co-play Xbox controller pickup & handoff choreography ticks
+    if (this.gamingActionPulse > 0) {
+      this.gamingActionPulse = Math.max(0, this.gamingActionPulse - safeDt * 2.8);
+    }
+    if (this.gamingPhase === 'pickup_pads') {
+      this.gamingPhaseTimer += safeDt;
+      // Smoothly turn to face the coffee table (+X) and reach down to collect both Xbox pads
+      const yawDiff = shortestAngleDelta(this.root.rotation.y, Math.PI * 0.5);
+      this.root.rotation.y += yawDiff * Math.min(1, safeDt * 6.0);
+
+      if (!this.gamingPickupNotified && this.gamingPhaseTimer >= 0.48) {
+        this.gamingPickupNotified = true;
+        this.hasWhitePadInHand = true;
+        this.hasPurplePadInHand = true;
+        this.gamingCallbacks?.onPickedUpFromTable?.();
+      }
+
+      if (this.gamingPhaseTimer >= 0.96) {
+        this.gamingPhase = 'walk_to_player';
+        this.gamingPhaseTimer = 0;
+        const handoffSpot = new THREE.Vector3(3.38, 0, -4.84);
+        this.walkTargetPos.copy(handoffSpot);
+        this.planPathTo(handoffSpot.x, handoffSpot.z, 0);
+        this.onStageWalkArrived = () => {
+          if (this.gamingPhase !== 'walk_to_player') return;
+          this.gamingPhase = 'handoff_wait';
+          this.gamingPhaseTimer = 0;
+          this.activePerformance = {
+            expression: 'happy',
+            gesture: 'reach_hand',
+            blush: 0.30,
+            headTilt: 0.06,
+            leanForward: 0.14,
+          };
+          this.gamingCallbacks?.onHandoffStart?.();
+        };
+        this.walkStartElapsed = 0;
+        this.postureState = 'dialogue_walking';
+      }
+    } else if (this.gamingPhase === 'handoff_wait') {
+      this.gamingPhaseTimer += safeDt;
+      if (!this.gamingHandoffTaken && this.gamingPhaseTimer >= 0.72) {
+        this.gamingHandoffTaken = true;
+        this.hasWhitePadInHand = false;
+        this.gamingCallbacks?.onWhitePadTaken?.();
+      }
+      if (this.gamingPhaseTimer >= 1.38) {
+        this.gamingPhase = 'return_to_sofa';
+        this.gamingPhaseTimer = 0;
+        this.activePerformance = {
+          expression: 'happy',
+          gesture: 'idle',
+          blush: 0.24,
+          headTilt: 0.04,
+          leanForward: 0,
+        };
+        const returnSpot = new THREE.Vector3(3.14, 0, -5.68);
+        this.walkTargetPos.copy(returnSpot);
+        this.planPathTo(returnSpot.x, returnSpot.z, 0);
+        this.onStageWalkArrived = () => {
+          if (this.gamingPhase !== 'return_to_sofa') return;
+          this.gamingPhase = 'sit_back_sofa';
+          this.sofaSeatPos.set(2.74, 0, -5.68);
+          this.sofaEntryPos.set(3.14, 0, -5.68);
+          this.sofaFaceYaw = Math.PI / 2;
+          this.onSofaTransitionDone = () => {
+            if (this.gamingPhase !== 'sit_back_sofa') return;
+            this.gamingPhase = 'playing_sofa';
+            this.activePerformance = {
+              expression: 'happy',
+              gesture: 'idle',
+              blush: 0.24,
+              headTilt: 0.04,
+              leanForward: 0.05,
+            };
+            this.gamingCallbacks?.onBackSeated?.();
+          };
+          this.startSofaSitDownTransition();
+        };
+        this.walkStartElapsed = 0;
+        this.postureState = 'dialogue_walking';
+      }
+    }
+
     // 5. Commit VRM LookAt eye tracking, ExpressionManager, and SpringBones
     this.vrm.update(safeDt);
+
+    // 5.5 Update attached held Xbox controllers in heroine hands
+    this.root.updateMatrixWorld(true);
+    if (this.heldWhitePadMesh) {
+      const rHand = this.vrm.humanoid.getRawBoneNode('rightHand');
+      if (this.hasWhitePadInHand && rHand) {
+        rHand.getWorldPosition(this._padWorldPos);
+        rHand.getWorldQuaternion(this._padWorldQuat);
+        this.root.worldToLocal(this._padWorldPos);
+        this.heldWhitePadMesh.visible = true;
+        this.heldWhitePadMesh.position.copy(this._padWorldPos);
+        this.heldWhitePadMesh.position.y -= 0.025;
+        this.heldWhitePadMesh.quaternion.copy(this.root.quaternion).invert().multiply(this._padWorldQuat);
+      } else {
+        this.heldWhitePadMesh.visible = false;
+      }
+    }
+    if (this.heldPurplePadMesh) {
+      const lHand = this.vrm.humanoid.getRawBoneNode('leftHand');
+      const rHand = this.vrm.humanoid.getRawBoneNode('rightHand');
+      if (this.hasPurplePadInHand && this.gamingPhase === 'playing_sofa' && lHand && rHand) {
+        lHand.getWorldPosition(this._padWorldPos);
+        rHand.getWorldPosition(this._padWorldPosB);
+        this._padWorldPos.lerp(this._padWorldPosB, 0.5);
+        this.root.worldToLocal(this._padWorldPos);
+        this.heldPurplePadMesh.visible = true;
+        this.heldPurplePadMesh.position.copy(this._padWorldPos);
+        this.heldPurplePadMesh.position.z += 0.035;
+        this.heldPurplePadMesh.rotation.set(
+          -0.42 + this.gamingActionPulse * 0.14,
+          Math.PI,
+          Math.sin(elapsed * 4.4) * 0.05
+        );
+      } else if (this.hasPurplePadInHand && lHand) {
+        lHand.getWorldPosition(this._padWorldPos);
+        lHand.getWorldQuaternion(this._padWorldQuat);
+        this.root.worldToLocal(this._padWorldPos);
+        this.heldPurplePadMesh.visible = true;
+        this.heldPurplePadMesh.position.copy(this._padWorldPos);
+        this.heldPurplePadMesh.position.y -= 0.025;
+        this.heldPurplePadMesh.quaternion.copy(this.root.quaternion).invert().multiply(this._padWorldQuat);
+      } else {
+        this.heldPurplePadMesh.visible = false;
+      }
+    }
+
+    // 6. Post-VRM-update safety clamp: guarantee decoupled closed mouth while smiling (`happy`)
+    if (this.currentHappy > 0.01 && this.smileBlockedMouthMorphs.length > 0) {
+      for (let i = 0; i < this.smileBlockedMouthMorphs.length; i++) {
+        const entry = this.smileBlockedMouthMorphs[i];
+        if (entry.mesh.morphTargetInfluences) {
+          entry.mesh.morphTargetInfluences[entry.index] = 0;
+        }
+      }
+    }
   }
 
   private disposeCurrentVrm(): void {
     this.removeSeatedSkirtColliders();
     this.skirtJointOriginalSettings.clear();
     this.lipSyncMorphFallback = [];
+    this.smileBlockedMouthMorphs = [];
     this.materialBaselines = [];
     this.disposeCheekBlushPlanes();
     this.smoothedBoneEuler.clear();

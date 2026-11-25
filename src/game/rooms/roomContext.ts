@@ -253,6 +253,11 @@ export interface RoomBuildContext {
       channelTimer: number;
       switchFlashTimer: number;
     };
+    livingConsole: {
+      tableWhitePad: THREE.Group | null;
+      tablePurplePad: THREE.Group | null;
+      tableRemote: THREE.Group | null;
+    };
     swivelChairs: SwivelChairRig[];
   };
   mat: (params: Parameters<typeof createTwilightMaterial>[1]) => THREE.MeshStandardMaterial;
@@ -1181,6 +1186,11 @@ export function createRoomBuildContext(
         channel: 0,
         channelTimer: 0,
         switchFlashTimer: 0,
+      },
+      livingConsole: {
+        tableWhitePad: null,
+        tablePurplePad: null,
+        tableRemote: null,
       },
       swivelChairs: [],
     },

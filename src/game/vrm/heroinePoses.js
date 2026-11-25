@@ -33,7 +33,7 @@ export const HEROINE_POSE_LIST = [
 
 export const HEROINE_EXPRESSION_LIST = [
   { id: 'neutral', label: '默认自然 (neutral)' },
-  { id: 'happy', label: '轻微笑 (happy)' },
+  { id: 'happy', label: '喜悦微笑 (happy)' },
   { id: 'relaxed', label: '温和放松 (relaxed)' },
   { id: 'sad', label: '微委屈 (sad)' },
   { id: 'surprised', label: '轻惊讶 (surprised)' },
@@ -41,8 +41,8 @@ export const HEROINE_EXPRESSION_LIST = [
 ];
 
 /**
- * 原生 VRM 单一情绪配置（严禁多情绪混叠，且避免过重权重导致闭眼呆滞傻笑）
- * 每个预设只激活至多 1 个 VRM 原生表情，保持双眼清亮自然注视镜头。
+ * 原生 VRM 单一情绪配置（严禁多情绪混叠或半权重混合）
+ * 每个预设只激活至多 1 个 VRM 原生表情且使用完整原生权重 1.0；切换表情时由控制器先退回 0 再平滑过渡。
  */
 export const HEROINE_EXPRESSIONS = {
   neutral: {
@@ -54,7 +54,7 @@ export const HEROINE_EXPRESSIONS = {
     wink: 0,
   },
   happy: {
-    happy: 0.24,
+    happy: 1,
     relaxed: 0,
     sad: 0,
     angry: 0,
@@ -63,7 +63,7 @@ export const HEROINE_EXPRESSIONS = {
   },
   relaxed: {
     happy: 0,
-    relaxed: 0.26,
+    relaxed: 1,
     sad: 0,
     angry: 0,
     surprised: 0,
@@ -72,7 +72,7 @@ export const HEROINE_EXPRESSIONS = {
   sad: {
     happy: 0,
     relaxed: 0,
-    sad: 0.28,
+    sad: 1,
     angry: 0,
     surprised: 0,
     wink: 0,
@@ -82,7 +82,7 @@ export const HEROINE_EXPRESSIONS = {
     relaxed: 0,
     sad: 0,
     angry: 0,
-    surprised: 0.36,
+    surprised: 1,
     wink: 0,
   },
   wink: {
@@ -91,7 +91,7 @@ export const HEROINE_EXPRESSIONS = {
     sad: 0,
     angry: 0,
     surprised: 0,
-    wink: 0.92,
+    wink: 1,
   },
 };
 
@@ -550,6 +550,48 @@ export function hasHeroinePoseOverride(poseId) {
 
 export function getHeroinePoseOverrideCount() {
   return Object.keys(persistedPoseOverrides).length;
+}
+
+export function exportHeroinePoseOverridesMap() {
+  const out = {};
+  for (const key of Object.keys(persistedPoseOverrides)) {
+    out[key] = { ...persistedPoseOverrides[key] };
+  }
+  return out;
+}
+
+export function importHeroinePoseOverridesMap(incomingMap) {
+  for (const key of Object.keys(persistedPoseOverrides)) {
+    delete persistedPoseOverrides[key];
+  }
+  if (incomingMap && typeof incomingMap === 'object') {
+    for (const id of Object.keys(DEFAULT_HEROINE_POSES)) {
+      const entry = incomingMap[id];
+      if (entry && typeof entry === 'object') {
+        const merged = mergePoseWithOverride(DEFAULT_HEROINE_POSES[id], entry);
+        HEROINE_POSES[id] = merged;
+        persistedPoseOverrides[id] = {
+          leftShoulder: [...merged.leftShoulder],
+          rightShoulder: [...merged.rightShoulder],
+          leftUpperArm: [...merged.leftUpperArm],
+          rightUpperArm: [...merged.rightUpperArm],
+          leftLowerArm: [...merged.leftLowerArm],
+          rightLowerArm: [...merged.rightLowerArm],
+          leftHand: [...merged.leftHand],
+          rightHand: [...merged.rightHand],
+          head: [...merged.head],
+          spineLean: merged.spineLean,
+        };
+      } else {
+        HEROINE_POSES[id] = deepClonePose(DEFAULT_HEROINE_POSES[id]);
+      }
+    }
+  } else {
+    for (const id of Object.keys(DEFAULT_HEROINE_POSES)) {
+      HEROINE_POSES[id] = deepClonePose(DEFAULT_HEROINE_POSES[id]);
+    }
+  }
+  writeSavedPoseOverrides(persistedPoseOverrides);
 }
 
 export function loadHeroineTunerPrefs() {

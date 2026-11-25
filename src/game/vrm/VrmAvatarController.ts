@@ -6,6 +6,7 @@ import {
   clearAllLocalAssets,
   deleteLocalAsset,
   getAllLocalAssets,
+  importAvatarBackupPackage,
   saveLocalAsset,
   type LocalAssetMeta,
   type LocalAssetSlot,
@@ -457,6 +458,37 @@ export class VrmAvatarController {
       this.lastError = err instanceof Error ? err.message : '清空缓存失败';
     } finally {
       this.emitStatus();
+    }
+  }
+
+  public async importBackupPackage(file: File): Promise<{
+    slotCount: number;
+    poseCount: number;
+    heroineSpawned: boolean;
+  }> {
+    if (this.disposed) {
+      return { slotCount: 0, poseCount: 0, heroineSpawned: false };
+    }
+    this.loadingSlot = 'restore';
+    this.lastError = null;
+    this.emitStatus();
+    try {
+      const summary = await importAvatarBackupPackage(file);
+      this.assetMetas = {};
+      this.fbxAssets = {};
+      this.clipNativeSpeeds = {};
+      this.disposeCurrentVrm();
+      this.heroine.removeHeroineVrm();
+      this.heroine.removeSitClip();
+      this.heroine.syncSharedFbx('idle', null);
+      this.heroine.syncSharedFbx('walk', null);
+      await this.restoreFromIndexedDB();
+      return summary;
+    } catch (err) {
+      this.lastError = err instanceof Error ? err.message : '导入 .tark 备份失败';
+      this.loadingSlot = null;
+      this.emitStatus();
+      throw err;
     }
   }
 

@@ -28,6 +28,10 @@ import {
   type RoomBuildContext,
 } from './roomContext';
 import { buildToyGunMesh } from '../entities/buildToyGunAndPlane';
+import {
+  buildTvRemoteMesh,
+  buildXboxControllerMesh,
+} from '../props/livingConsoleProps';
 
 // Reusable matrix/transform scratch objects for InstancedMesh population
 const _instMat = new THREE.Matrix4();
@@ -2992,10 +2996,10 @@ export function buildLivingRoom(
   blueBookGroup.add(blueCover);
   table.add(blueBookGroup);
 
-  // Open Double-Page Illustrated Botanical Magazine & Pink Heart Notepad on Coffee Table (Screenshot 1!)
+  // Open Double-Page Illustrated Botanical Magazine & Pink Heart Notepad on Coffee Table (shifted slightly +X to give controllers sofa-side room)
   const openMagGroup = new THREE.Group();
-  openMagGroup.position.set(-0.04, 0.443, 0.14);
-  openMagGroup.rotation.y = 0.36;
+  openMagGroup.position.set(0.14, 0.443, 0.16);
+  openMagGroup.rotation.y = 0.28;
 
   // Pink heart-patterned booklet tucked diagonally underneath the open magazine (Screenshot 1)
   const flatBook2 = new THREE.Mesh(
@@ -3101,82 +3105,40 @@ export function buildLivingRoom(
   drinkGroup.add(strawMesh);
   table.add(drinkGroup);
 
-  // Sculpted Gamepad Controller on Coffee Table
-  const gamepadGroup = new THREE.Group();
-  gamepadGroup.position.set(0.24, 0.444, 0.38);
-  gamepadGroup.rotation.y = -0.38;
-  gamepadGroup.scale.setScalar(0.92);
+  // Two Detailed Wireless Xbox Controllers (White & Light Purple) + Sleek TV Remote on Sofa-Near Edge (-X)
+  const consoleStationGroup = new THREE.Group();
+  consoleStationGroup.position.set(-0.27, 0.442, 0.08);
+  consoleStationGroup.userData.dynamic = true;
 
-  const padBodyMat = mat({ color: 0xff7aa8, roughness: 0.90, metalness: 0.0 });
-  const padAccentMat = mat({ color: 0x453b56, roughness: 0.90, metalness: 0.0 });
+  const tablePurplePad = buildXboxControllerMesh(uniforms, 'purple', outlines, {
+    addOutline: true,
+    isDynamic: true,
+  });
+  tablePurplePad.position.set(0.01, 0.0, -0.22);
+  tablePurplePad.rotation.y = Math.PI * 0.44;
+  consoleStationGroup.add(tablePurplePad);
 
-  const padCenter = new THREE.Mesh(
-    createBeveledBox(0.11, 0.026, 0.15, 0.008, 3),
-    padBodyMat
-  );
-  padCenter.position.y = 0.018;
-  padCenter.castShadow = true;
-  outlines.addOutline(padCenter, 1.05);
-  gamepadGroup.add(padCenter);
+  const tableWhitePad = buildXboxControllerMesh(uniforms, 'white', outlines, {
+    addOutline: true,
+    isDynamic: true,
+  });
+  tableWhitePad.position.set(0.01, 0.0, 0.01);
+  tableWhitePad.rotation.y = Math.PI * 0.56;
+  consoleStationGroup.add(tableWhitePad);
 
-  for (const side of [-1, 1]) {
-    const grip = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.024, 0.075, 6, 12),
-      padBodyMat
-    );
-    grip.rotation.x = Math.PI / 2;
-    grip.rotation.z = side * 0.28;
-    grip.position.set(-0.015, 0.016, side * 0.072);
-    grip.castShadow = true;
-    outlines.addOutline(grip, 1.05);
-    gamepadGroup.add(grip);
+  const tableRemote = buildTvRemoteMesh(uniforms, outlines);
+  tableRemote.position.set(-0.01, 0.0, 0.23);
+  tableRemote.rotation.y = Math.PI * 0.5 + 0.12;
+  consoleStationGroup.add(tableRemote);
 
-    const stickStem = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.006, 0.006, 0.016, 8),
-      padAccentMat
-    );
-    stickStem.position.set(side === -1 ? 0.01 : -0.012, 0.034, side * 0.036);
-    gamepadGroup.add(stickStem);
-
-    const stickCap = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.014, 0.012, 0.006, 12),
-      padAccentMat
-    );
-    stickCap.position.set(side === -1 ? 0.01 : -0.012, 0.042, side * 0.036);
-    gamepadGroup.add(stickCap);
-  }
-
-  const dpadH = new THREE.Mesh(
-    createBeveledBox(0.026, 0.006, 0.009, 0.002, 1),
-    padAccentMat
-  );
-  dpadH.position.set(-0.015, 0.033, -0.048);
-  gamepadGroup.add(dpadH);
-  const dpadV = new THREE.Mesh(
-    createBeveledBox(0.009, 0.006, 0.026, 0.002, 1),
-    padAccentMat
-  );
-  dpadV.position.set(-0.015, 0.033, -0.048);
-  gamepadGroup.add(dpadV);
-
-  for (const [bx, bz, bcol] of [
-    [0.018, 0.052, 0x72eb9e],
-    [0.030, 0.040, 0xff6e8e],
-    [0.006, 0.040, 0x74c2ff],
-    [0.018, 0.028, 0xffe26a],
-  ] as const) {
-    const btn = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.0055, 0.0055, 0.006, 8),
-      mat({ color: bcol, roughness: 0.90, metalness: 0.0 })
-    );
-    btn.position.set(bx, 0.033, bz);
-    gamepadGroup.add(btn);
-  }
-  table.add(gamepadGroup);
+  table.add(consoleStationGroup);
+  ctx.metaState.livingConsole.tableWhitePad = tableWhitePad;
+  ctx.metaState.livingConsole.tablePurplePad = tablePurplePad;
+  ctx.metaState.livingConsole.tableRemote = tableRemote;
 
   // Two-Tone Creamy White & Macaron Sky-Blue Square Pen Holder Cup on Coffee Table
   const penCupGroup = new THREE.Group();
-  penCupGroup.position.set(-0.22, 0.442, -0.34);
+  penCupGroup.position.set(-0.20, 0.442, -0.46);
   const cupBot = new THREE.Mesh(
     createBeveledBox(0.072, 0.052, 0.072, 0.008, 2),
     mat({ color: 0x82c8ff, roughness: 0.90, metalness: 0.0 })
@@ -3213,77 +3175,29 @@ export function buildLivingRoom(
   }
   table.add(penCupGroup);
 
-  const remoteGroup = new THREE.Group();
-  remoteGroup.position.set(0.18, 0.442, 0.08);
-  remoteGroup.rotation.y = 0.28;
-  const remoteBody = new THREE.Mesh(
-    createBeveledBox(0.048, 0.016, 0.165, 0.005, 2),
-    padAccentMat
-  );
-  remoteBody.position.y = 0.008;
-  remoteBody.castShadow = true;
-  outlines.addOutline(remoteBody, 1.04);
-  remoteGroup.add(remoteBody);
-  for (let rb = 0; rb < 6; rb++) {
-    const rBtn = new THREE.Mesh(
-      createBeveledBox(0.010, 0.004, 0.010, 0.002, 1),
-      mat({
-        color: rb === 0 ? 0xe04858 : rb === 1 ? 0x48b868 : 0x788296,
-        roughness: 0.4,
-      })
-    );
-    rBtn.position.set((rb % 2 === 0 ? -1 : 1) * 0.009, 0.017, -0.045 + Math.floor(rb / 2) * 0.028);
-    remoteGroup.add(rBtn);
-  }
-  table.add(remoteGroup);
-
   group.add(table);
   addBoxCollider('col_coffee_table', 4.62, 0.26, -5.25, 0.98, 0.52, 1.72);
 
-  const cablePts = [
-    new THREE.Vector3(4.87, 0.458, -4.87),
-    new THREE.Vector3(5.12, 0.422, -4.92),
-    new THREE.Vector3(5.32, 0.16, -4.98),
-    new THREE.Vector3(5.58, 0.032, -5.04),
-    new THREE.Vector3(5.92, 0.028, -5.12),
-    new THREE.Vector3(6.22, 0.032, -5.16),
-    new THREE.Vector3(6.38, 0.22, -5.16),
-    new THREE.Vector3(6.51, 0.455, -5.16),
-  ];
-  const controllerCable = new THREE.Mesh(
-    createTaperedCurveGeometry(cablePts, 0.0075, 0.0075, 44, 8),
-    padAccentMat
-  );
-  controllerCable.castShadow = true;
-  group.add(controllerCable);
-
-  const consolePlug = new THREE.Mesh(
-    createBeveledBox(0.036, 0.018, 0.024, 0.004, 2),
-    padAccentMat
-  );
-  consolePlug.position.set(6.52, 0.455, -5.16);
-  group.add(consolePlug);
-
-  registerInteractable('liv_gamepad', '连线游戏手柄', '检查游戏手柄', 'living', gamepadGroup, () => ({
-    title: '连着主机的游戏手柄',
-    message: '宽大的实木茶几上放着一只双手柄控制器，长长的数据线越过地毯连向电视柜里的游戏机。旁边的冰饮还插着吸管，手柄握把甚至还带着一丝手心的余温。',
+  registerInteractable('liv_gamepad', 'Xbox 双人手柄与遥控器', '查看手柄与遥控器', 'living', consoleStationGroup, () => ({
+    title: '茶几沙发侧的双人 Xbox 手柄与遥控器',
+    message: '茶几靠近沙发的一侧整齐摆着两只 Xbox 无线游戏手柄——一只纯净白、一只浅薰衣草紫，还有一只金属边框电视遥控器。坐上客厅沙发就能叫她一起拿手柄打雪仗或玩坦克大战！',
   }));
 
-  registerInteractable('liv_headphone_stand', '胡桃木耳机架与头戴耳机', '检查茶几摆件', 'living', headphoneStandGroup, () => ({
+  registerInteractable('liv_headphone_stand', '胡桃木耳机架与精致抽纸盒', '检查茶几摆件', 'living', headphoneStandGroup, () => ({
     title: '胡桃木黄铜耳机架与精致抽纸盒',
     message: '黄铜支架上稳稳挂着一副象牙白复古监听头戴耳机，柔软的耳罩还带着淡淡的木质香气；旁边的陶瓷橡木盖抽纸盒里轻轻抽出一角素白纸巾，把茶几衬托得格外温馨利落。',
   }));
 
   // Small Tabletop Pens, Drafting Pencil & Brass Top/Dice Trinkets on Coffee Table
   const { penGroup: livPen, pencilGroup: livPencil } = createTabletopPenSet(ctx, 0x2c4a6f, true);
-  livPen.position.set(-0.24, 0.442, -0.05);
+  livPen.position.set(0.16, 0.442, -0.24);
   livPen.rotation.y = 0.38;
   table.add(livPen);
   registerAmbientProp({
     id: 'liv_table_pen',
     room: 'living',
     mesh: livPen,
-    worldPos: [4.38, 0.442, -5.30],
+    worldPos: [4.78, 0.442, -5.49],
     kind: 'roller',
     maxDrift: 0.038,
     rollRadius: 0.0056,
@@ -3292,14 +3206,14 @@ export function buildLivingRoom(
   });
 
   if (livPencil) {
-    livPencil.position.set(-0.29, 0.442, 0.04);
+    livPencil.position.set(0.10, 0.442, -0.34);
     livPencil.rotation.y = -0.52;
     table.add(livPencil);
     registerAmbientProp({
       id: 'liv_table_pencil',
       room: 'living',
       mesh: livPencil,
-      worldPos: [4.33, 0.442, -5.21],
+      worldPos: [4.72, 0.442, -5.59],
       kind: 'roller',
       maxDrift: 0.036,
       rollRadius: 0.0046,
@@ -3333,19 +3247,10 @@ export function buildLivingRoom(
     reactivity: 0.92,
   });
   registerAmbientProp({
-    id: 'liv_table_gamepad',
-    room: 'living',
-    mesh: gamepadGroup,
-    worldPos: [4.86, 0.444, -4.87],
-    kind: 'slide',
-    maxDrift: 0.022,
-    reactivity: 0.88,
-  });
-  registerAmbientProp({
     id: 'liv_table_top_book',
     room: 'living',
     mesh: flatBook2,
-    worldPos: [4.64, 0.482, -4.99],
+    worldPos: [4.82, 0.482, -4.97],
     kind: 'slide',
     maxDrift: 0.016,
     reactivity: 0.72,
@@ -3743,18 +3648,18 @@ export function buildLivingRoom(
   outlines.addOutline(rightCoralPillow, 1.016);
   sofa.add(rightCoralPillow);
 
-  // Playful Comical Children's Plastic Toy Gun resting visibly on the middle sofa cushion
+  // Playful Comical Children's Plastic Toy Gun resting visibly on the far-north sofa cushion (isolated from co-sit zone)
   const toyGunRig = buildToyGunMesh(ctx.uniforms, outlines, { isViewModel: false });
   const toyGunWorld = toyGunRig.group;
   // Sofa is at (2.38, 0, -5.25), rotY = +PI/2 (local +Z -> world +X, local +X -> world -Z).
-  // Middle cushion top sits at Y ~ 0.515..0.525; place clearly in front-center between pillows.
-  toyGunWorld.position.set(2.54, 0.556, -5.18);
-  toyGunWorld.rotation.set(0.05, 0.62, Math.PI / 2 - 0.12);
+  // Place on the far north cushion (Z = -6.42) so its pickup hitbox stays cleanly separated from the co-sit zone.
+  toyGunWorld.position.set(2.68, 0.556, -6.42);
+  toyGunWorld.rotation.set(0.05, 0.48, Math.PI / 2 - 0.12);
   toyGunWorld.scale.setScalar(1.08);
   toyGunWorld.userData.dynamic = true;
   // Tight invisible hit-proxy right around the toy gun so center-dot targeting is instant and pinpoint accurate
   const toyGunHitProxy = new THREE.Mesh(
-    new THREE.BoxGeometry(0.22, 0.28, 0.42),
+    new THREE.BoxGeometry(0.24, 0.28, 0.42),
     new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false })
   );
   toyGunHitProxy.position.set(0, 0.02, -0.04);
@@ -3798,9 +3703,10 @@ export function buildLivingRoom(
   sofaLegsInst.computeBoundingSphere();
   sofa.add(sofaLegsInst);
 
-  // Invisible sit hit-proxy covering the sofa cushions/backrest (yields to toy gun when aiming right at toy gun)
+  // Invisible sit hit-proxy covering ONLY the south/center cushions (world Z in [-5.815, -3.965]),
+  // leaving a clear ~0.40m gap before the toy gun at world Z = -6.42.
   const sofaSitProxy = new THREE.Mesh(
-    new THREE.BoxGeometry(3.26, 0.72, 0.94),
+    new THREE.BoxGeometry(1.85, 0.72, 0.94),
     new THREE.MeshBasicMaterial({
       transparent: true,
       opacity: 0,
@@ -3808,11 +3714,11 @@ export function buildLivingRoom(
       colorWrite: false,
     })
   );
-  sofaSitProxy.position.set(0, 0.56, 0.02);
+  sofaSitProxy.position.set(-0.36, 0.56, 0.02);
   sofa.add(sofaSitProxy);
 
   group.add(sofa);
-  addBoxCollider('col_sofa_main', 2.38, 0.54, -5.25, 1.18, 1.06, 3.62);
+  addBoxCollider('col_sofa_main', 2.34, 0.54, -5.25, 1.06, 1.06, 3.62);
 
   registerInteractable(
     'living_sofa',

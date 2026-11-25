@@ -7,12 +7,14 @@ import {
 } from 'react';
 import {
   AlertCircle,
+  Archive,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   Copy,
   Database,
+  Download,
   Eye,
   FileUp,
   Loader2,
@@ -20,6 +22,7 @@ import {
   PersonStanding,
   Play,
   RotateCcw,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   Trash2,
@@ -29,6 +32,8 @@ import {
 import {
   ALL_LOCAL_ASSET_SLOTS,
   classifyLocalAvatarFiles,
+  ensurePersistentStorage,
+  exportAvatarBackupPackage,
   formatFileSize,
   type LocalAssetSlot,
 } from '../game/vrm/localAssetDb';
@@ -43,6 +48,7 @@ import {
   HEROINE_POSE_LIST,
   cloneHeroinePose,
   formatHeroinePoseSnippet,
+  getHeroinePoseOverrideCount,
   hasHeroinePoseOverride,
   loadHeroineTunerPrefs,
   resetHeroinePoseOverride,
@@ -56,6 +62,7 @@ interface LocalAvatarLoaderPanelProps {
   status: VrmAvatarStatusSnapshot;
   thirdPersonPreview: boolean;
   onImportFile: (slot: LocalAssetSlot, file: File) => Promise<void>;
+  onImportBackupPackage: (file: File) => Promise<{ slotCount: number; poseCount: number }>;
   onRemoveSlot: (slot: LocalAssetSlot) => Promise<void>;
   onClearAll: () => Promise<void>;
   onToggleThirdPerson: () => void;
@@ -156,6 +163,7 @@ export function LocalAvatarLoaderPanel({
   status,
   thirdPersonPreview,
   onImportFile,
+  onImportBackupPackage,
   onRemoveSlot,
   onClearAll,
   onToggleThirdPerson,
@@ -166,6 +174,9 @@ export function LocalAvatarLoaderPanel({
   const [draggingBatch, setDraggingBatch] = useState(false);
   const [draggingSlot, setDraggingSlot] = useState<LocalAssetSlot | null>(null);
   const [dropNotice, setDropNotice] = useState<string | null>(null);
+  const [backupNotice, setBackupNotice] = useState<string | null>(null);
+  const [storagePersisted, setStoragePersisted] = useState(false);
+  const [backupBusy, setBackupBusy] = useState(false);
 
   // Real-time heroine pose tuner state (auto-hydrated & persisted to localStorage)
   const [tunerOpen, setTunerOpen] = useState(false);
@@ -197,6 +208,7 @@ export function LocalAvatarLoaderPanel({
   }, [status.heroineLoaded, tunerActive, onUpdateHeroinePoseTuner]);
 
   useEffect(() => {
+    void ensurePersistentStorage().then((ok) => setStoragePersisted(ok));
     return () => {
       if (copyTimerRef.current !== null) {
         window.clearTimeout(copyTimerRef.current);
@@ -381,6 +393,7 @@ export function LocalAvatarLoaderPanel({
   };
 
   const batchInputRef = useRef<HTMLInputElement | null>(null);
+  const backupInputRef = useRef<HTMLInputElement | null>(null);
   const slotInputRefs = useRef<Record<LocalAssetSlot, HTMLInputElement | null>>({
     vrm: null,
     idle: null,
@@ -396,7 +409,7 @@ export function LocalAvatarLoaderPanel({
   const boundAnimCount = (['idle', 'walk', 'run'] as LocomotionState[]).filter(
     (s) => status.boundClips[s]
   ).length;
-  const isBusy = status.loadingSlot !== null;
+  const isBusy = status.loadingSlot !== null || backupBusy;
 
   const exitLockIfNeeded = () => {
     if (document.pointerLockElement) {
@@ -404,11 +417,64 @@ export function LocalAvatarLoaderPanel({
     }
   };
 
+  const restoreFromBackupFile = async (file: File) => {
+    exitLockIfNeeded();
+    setDropNotice(null);
+    setBackupNotice(null);
+    setBackupBusy(true);
+    try {
+      const res = await onImportBackupPackage(file);
+      const prefs = loadHeroineTunerPrefs();
+      const cloned = cloneHeroinePose(prefs.poseId);
+      setTunerPoseId(prefs.poseId);
+      setTunerPose(cloned);
+      setTunerExpr(prefs.expression);
+      setTunerPoseSaved(hasHeroinePoseOverride(prefs.poseId));
+      if (tunerActive) {
+        pushTunerState(prefs.poseId, cloned, prefs.expression, tunerAnimateWave);
+      }
+      setBackupNotice(`已恢复 ${res.slotCount} 个模型/动作与 ${res.poseCount} 项姿态微调！`);
+    } catch (err) {
+      setDropNotice(err instanceof Error ? err.message : '恢复备份包失败');
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const handleExportBackup = async () => {
+    exitLockIfNeeded();
+    setDropNotice(null);
+    setBackupNotice(null);
+    setBackupBusy(true);
+    try {
+      const { blob, filename, slotCount, poseCount } = await exportAvatarBackupPackage();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+      setBackupNotice(`已导出 ${slotCount} 个模型/动作 + ${poseCount} 项姿态微调 (.tark)`);
+    } catch (err) {
+      setDropNotice(err instanceof Error ? err.message : '导出备份包失败');
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
   const handleBatchFiles = async (files: FileList | File[]) => {
     if (!files || files.length === 0) return;
     exitLockIfNeeded();
     setDropNotice(null);
-    const { matched, unrecognized } = classifyLocalAvatarFiles(files);
+    setBackupNotice(null);
+    const { matched, backupFile, unrecognized } = classifyLocalAvatarFiles(files);
+
+    if (backupFile) {
+      await restoreFromBackupFile(backupFile);
+      return;
+    }
 
     // Import VRM models first so FBX files dropped alongside immediately retarget onto them
     const orderedSlots: LocalAssetSlot[] = [
@@ -432,10 +498,10 @@ export function LocalAvatarLoaderPanel({
       setDropNotice(
         `已忽略不支持的文件：${unrecognized.slice(0, 2).join('、')}${
           unrecognized.length > 2 ? ' 等' : ''
-        }（仅支持 .vrm 与 .fbx）`
+        }（仅支持 .vrm / .fbx / .tark）`
       );
     } else if (importedCount === 0) {
-      setDropNotice('未识别到 .vrm 或 .fbx 文件');
+      setDropNotice('未识别到 .vrm、.fbx 或 .tark 备份文件');
     }
   };
 
@@ -622,9 +688,21 @@ export function LocalAvatarLoaderPanel({
         ref={batchInputRef}
         type="file"
         multiple
-        accept=".vrm,.fbx"
+        accept=".vrm,.fbx,.tark"
         className="hidden"
         onChange={handleBatchInputChange}
+      />
+      {/* Hidden backup archive picker */}
+      <input
+        ref={backupInputRef}
+        type="file"
+        accept=".tark,.twilight-pkg"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void restoreFromBackupFile(f);
+          e.target.value = '';
+        }}
       />
 
       {/* Hidden per-slot pickers */}
@@ -712,11 +790,59 @@ export function LocalAvatarLoaderPanel({
           >
             <Upload className="h-4 w-4 text-[#ffb88c]" />
             <p className="mt-1 text-[11px] font-medium text-[#f8eefc]">
-              拖放或点击批量导入 .vrm / .fbx
+              拖放或点击批量导入 .vrm / .fbx / .tark
             </p>
             <p className="mt-0.5 text-[10px] text-[#cbb8de]/85">
-              自动识别 heroine.vrm / idle / walk / run / sit 并写入 IndexedDB
+              自动识别角色/动作或一键恢复 .tark 跨 Remix 备份包
             </p>
+          </div>
+
+          {/* Cross-Remix Persistence & 1-Click Backup Card */}
+          <div className="mt-2 rounded-md border border-violet-300/25 bg-violet-950/25 p-2">
+            <div className="flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-1 text-[10.5px] font-medium text-[#e7d8ff]">
+                <Archive className="h-3 w-3 text-[#c8a8ff]" />
+                <span>跨 Remix 持久化备份</span>
+              </div>
+              {storagePersisted && (
+                <span
+                  title="已向浏览器申请 Persistent Storage，同域名重启不易被系统回收"
+                  className="inline-flex items-center gap-0.5 text-[9.5px] text-emerald-300"
+                >
+                  <ShieldCheck className="h-2.5 w-2.5" />
+                  同域防清理已开启
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-[9.5px] leading-relaxed text-[#cbb8de]/85">
+              每次 Remix 会分配新域名，浏览器会隔离旧域名的 IndexedDB 与微调记录。Remix 前点导出 <code className="text-[#ffd8be]">.tark</code>，新版本拖入即可一键复原全部模型与微调（共 {getHeroinePoseOverrideCount()} 项姿态微调）。
+            </p>
+            <div className="mt-1.5 flex items-center gap-1.5">
+              <button
+                type="button"
+                disabled={isBusy || (cachedCount === 0 && getHeroinePoseOverrideCount() === 0)}
+                onClick={() => void handleExportBackup()}
+                className="flex flex-1 items-center justify-center gap-1 rounded border border-[#c8a8ff]/45 bg-[#c8a8ff]/18 px-2 py-1 text-[10px] font-medium text-[#f4ecff] hover:bg-[#c8a8ff]/28 disabled:opacity-45 cursor-pointer"
+              >
+                <Download className="h-3 w-3" />
+                <span>导出全部备份 (.tark)</span>
+              </button>
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={() => {
+                  exitLockIfNeeded();
+                  backupInputRef.current?.click();
+                }}
+                className="flex items-center justify-center gap-1 rounded border border-white/25 bg-white/10 px-2 py-1 text-[10px] font-medium text-[#f5ecff] hover:bg-white/20 disabled:opacity-45 cursor-pointer"
+              >
+                <FileUp className="h-3 w-3" />
+                <span>导入备份</span>
+              </button>
+            </div>
+            {backupNotice && (
+              <p className="mt-1 text-[10px] text-emerald-300">{backupNotice}</p>
+            )}
           </div>
 
           {/* Protagonist Slots */}

@@ -59,6 +59,10 @@ import type { LocalAssetSlot } from './game/vrm/localAssetDb';
 import type { VrmAvatarStatusSnapshot } from './game/vrm/VrmAvatarController';
 import type { HeroinePoseTunerState } from './game/vrm/HeroineAvatarController';
 import type {
+  TvConsoleScreenMode,
+  TvGameSelectionId,
+} from './game/tv/LivingTvGamesEngine';
+import type {
   DualChannelTurn,
   GameSettings,
   KeystrokeProfile,
@@ -234,6 +238,15 @@ export default function App() {
   const [heroinePromptKind, setHeroinePromptKind] = useState<HeroineFloatingPromptKind | null>(null);
   const [sofaCoSeated, setSofaCoSeated] = useState(false);
   const [livingTvOn, setLivingTvOn] = useState(false);
+  const [sofaCoPlay, setSofaCoPlay] = useState<{
+    phase: 'none' | 'fetching' | 'playing';
+    tvScreenMode: TvConsoleScreenMode;
+    selectedGame: TvGameSelectionId;
+  }>({
+    phase: 'none',
+    tvScreenMode: 'launcher',
+    selectedGame: 'snowball',
+  });
   const [heroineTyping, setHeroineTyping] = useState(false);
   const [encounterPhase, setEncounterPhase] = useState<'idle' | 'walking' | 'dialogue'>('idle');
   const [encounterKind, setEncounterKind] = useState<'main' | 'routine'>('main');
@@ -566,6 +579,14 @@ export default function App() {
       engineRef.current?.notifyEncounterPlayerInteraction();
       vnAudioEngine.playSfx('click');
       let nextId = choice.nextNodeId;
+      if (nextId === '__START_SOFA_COPLAY__') {
+        encounterTokenRef.current += 1;
+        engineRef.current?.finishRoutineHeroineChat();
+        setEncounterPhase('idle');
+        setEncounterNodeId(null);
+        engineRef.current?.startSofaCoPlay();
+        return;
+      }
       if (nextId === 'routine_casual_1') {
         nextId =
           HEROINE_CASUAL_NODE_IDS[casualChatIdxRef.current % HEROINE_CASUAL_NODE_IDS.length];
@@ -771,10 +792,18 @@ export default function App() {
           encounterTokenRef.current += 1;
           setEncounterPhase((prev) => (prev === 'dialogue' ? 'idle' : prev));
           setEncounterNodeId(null);
+          setSofaCoPlay({
+            phase: 'none',
+            tvScreenMode: 'launcher',
+            selectedGame: 'snowball',
+          });
         }
       },
       onHeroineSofaTvToggled: (isOn) => {
         setLivingTvOn(isOn);
+      },
+      onSofaCoPlayChange: (state) => {
+        setSofaCoPlay(state);
       },
     });
 
@@ -1418,6 +1447,11 @@ export default function App() {
     []
   );
 
+  const handleImportLocalAvatarBackupPackage = useCallback(async (file: File) => {
+    const res = await engineRef.current?.importLocalAvatarBackupPackage(file);
+    return res ?? { slotCount: 0, poseCount: 0 };
+  }, []);
+
   const handleRemoveLocalAvatarSlot = useCallback(async (slot: LocalAssetSlot) => {
     await engineRef.current?.removeLocalAvatarSlot(slot);
   }, []);
@@ -1635,6 +1669,9 @@ export default function App() {
         choices={activeEncounterChoices}
         sofaCoSeated={sofaCoSeated && pcView === 'closed' && !hasAnyModalOpen && !showInventory && !showPaperNote}
         livingTvOn={livingTvOn}
+        coPlayPhase={sofaCoPlay.phase}
+        tvScreenMode={sofaCoPlay.tvScreenMode}
+        selectedTvGame={sofaCoPlay.selectedGame}
         onStartEncounter={handlePromptClick}
         onAdvanceLine={handleAdvanceEncounterLine}
         onSelectChoice={handleSelectEncounterChoice}
@@ -1644,6 +1681,24 @@ export default function App() {
           engineRef.current?.switchLivingRoomTvChannel(true);
         }}
         onStandUpSofa={handleStandUpSofa}
+        onStartSofaCoPlay={() => {
+          vnAudioEngine.unlock();
+          vnAudioEngine.playSfx('click');
+          engineRef.current?.startSofaCoPlay();
+        }}
+        onStopSofaCoPlay={() => {
+          vnAudioEngine.playSfx('click');
+          engineRef.current?.stopSofaCoPlay();
+        }}
+        onSelectTvGame={(game) => {
+          vnAudioEngine.unlock();
+          vnAudioEngine.playSfx('click');
+          engineRef.current?.selectLivingTvGame(game, true);
+        }}
+        onReturnTvLauncher={() => {
+          vnAudioEngine.playSfx('click');
+          engineRef.current?.returnLivingTvToLauncher();
+        }}
       />
 
       {/* 3D Apartment HUD Overlay (stays visible during heroine encounter so player UI is never blocked) */}
@@ -1711,6 +1766,7 @@ export default function App() {
           status={avatarStatus}
           thirdPersonPreview={thirdPersonPreview}
           onImportFile={handleImportLocalAvatarFile}
+          onImportBackupPackage={handleImportLocalAvatarBackupPackage}
           onRemoveSlot={handleRemoveLocalAvatarSlot}
           onClearAll={handleClearLocalAvatarCache}
           onToggleThirdPerson={handleToggleThirdPersonPreview}

@@ -58,6 +58,17 @@ import {
   type ToyGunRig,
 } from './entities/buildToyGunAndPlane';
 import {
+  buildProtagonistGamingArmsRig,
+  buildXboxControllerMesh,
+  type ProtagonistGamingArmsRig,
+} from './props/livingConsoleProps';
+import {
+  LivingTvGamesEngine,
+  type TvConsoleScreenMode,
+  type TvGameControlInput,
+  type TvGameSelectionId,
+} from './tv/LivingTvGamesEngine';
+import {
   buildApartmentContactShadows,
   updateBakedLightmapForAtmosphere,
   type BakedLightmapRig,
@@ -289,6 +300,17 @@ export interface PcScreenRect {
   height: number;
 }
 
+export type SofaMenuOptionId =
+  | 'play_game'
+  | 'chat'
+  | 'toggle_tv'
+  | 'switch_channel'
+  | 'snowball'
+  | 'tank'
+  | 'launcher'
+  | 'stop_coplay'
+  | 'stand_up';
+
 export interface EngineCallbacks {
   onRoomChange: (room: { id: RoomId; label: string }) => void;
   onHoverTarget: (target: { label: string; actionLabel: string } | null) => void;
@@ -312,8 +334,18 @@ export interface EngineCallbacks {
   onHeroineTypingChange?: (typing: boolean) => void;
   onRequestStartHeroineEncounter?: () => void;
   onRequestStartRoutineChat?: (mode: 'standing' | 'sofa') => void;
-  onSofaCoSitChange?: (state: { active: boolean; tvOn: boolean }) => void;
+  onSofaCoSitChange?: (state: {
+    active: boolean;
+    tvOn: boolean;
+    activeOption?: SofaMenuOptionId;
+  }) => void;
   onHeroineSofaTvToggled?: (isOn: boolean) => void;
+  onSofaCoPlayChange?: (state: {
+    phase: 'none' | 'fetching' | 'playing';
+    tvScreenMode: TvConsoleScreenMode;
+    selectedGame: TvGameSelectionId;
+    activeOption?: SofaMenuOptionId;
+  }) => void;
 }
 
 export class ApartmentEngine {
@@ -495,6 +527,7 @@ export class ApartmentEngine {
   private heroineTypingReported = false;
   private sofaSitState: 'none' | 'sitting' | 'seated' | 'standing' = 'none';
   private sofaStateElapsed = 0;
+  private sofaMenuIndex = 0;
   private readonly sofaCamPos = new THREE.Vector3();
   private readonly sofaSavedStandPos = new THREE.Vector3(3.48, 0, -4.78);
   private sofaSavedStandYaw = -Math.PI / 2;
@@ -561,6 +594,11 @@ export class ApartmentEngine {
   private heldItemAnchor = new THREE.Group();
   private heldToyGun!: ToyGunRig;
   private heldPaperNote!: THREE.Group;
+  private protagonistGamingRig!: ProtagonistGamingArmsRig;
+  private livingTvGames = new LivingTvGamesEngine();
+  private coPlayState: 'none' | 'fetching' | 'handoff_reach' | 'playing' = 'none';
+  private coPlayHandoffProgress = 0;
+  private coPlayActionPulse = 0;
   private heldEquipAnim = 0;
   private gunRecoilKick = 0;
   private gunTriggerAnim = 0;
@@ -2565,70 +2603,61 @@ export class ApartmentEngine {
     }
 
     if (this.sofaSitState === 'sitting' || this.sofaSitState === 'seated') {
-      if (e.code === 'KeyT' && !e.repeat) {
-        const nextOn = this.toggleLivingRoomTv();
-        this.callbacks.onHeroineSofaTvToggled?.(nextOn);
-        return;
-      }
-      if (e.code === 'KeyC' && !e.repeat) {
-        this.switchLivingRoomTvChannel(true);
-        return;
-      }
-      if ((e.code === 'KeyE' || e.code === 'Escape') && !e.repeat) {
-        this.standUpFromSofaCoSit();
-        return;
-      }
-      if (e.code === 'Space' && !e.repeat && !this.heroineEncounterActive) {
-        this.standUpFromSofaCoSit();
-        return;
-      }
-      if (
-        !this.heroineEncounterActive &&
-        this.sofaStateElapsed > 0.35 &&
-        (e.code === 'KeyW' ||
-          e.code === 'KeyA' ||
-          e.code === 'KeyS' ||
-          e.code === 'KeyD' ||
-          e.code === 'ArrowUp' ||
-          e.code === 'ArrowDown' ||
-          e.code === 'ArrowLeft' ||
-          e.code === 'ArrowRight')
-      ) {
-        this.standUpFromSofaCoSit();
-        return;
-      }
-      if (e.code === 'KeyF' && !e.repeat && !this.heroineEncounterActive) {
-        // If looking directly at the Living Room TV while seated, pressing F toggles the TV;
-        // otherwise opens cozy sofa chat with her!
-        this.camera.getWorldDirection(this.toyGunAimDirScratch);
-        this.toyGunToHeroineScratch
-          .set(6.76 - this.camera.position.x, 1.24 - this.camera.position.y, -5.08 - this.camera.position.z)
-          .normalize();
-        if (this.toyGunAimDirScratch.dot(this.toyGunToHeroineScratch) > 0.88) {
-          const nextOn = this.toggleLivingRoomTv();
-          this.callbacks.onHeroineSofaTvToggled?.(nextOn);
+      if (e.code === 'Escape' && !e.repeat) {
+        if (this.coPlayState !== 'none') {
+          this.stopSofaCoPlay();
         } else {
-          this.callbacks.onRequestStartRoutineChat?.('sofa');
+          this.standUpFromSofaCoSit();
         }
         return;
+      }
+
+      if (this.coPlayState === 'playing') {
+        if (
+          (e.code === 'Space' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') &&
+          !e.repeat
+        ) {
+          this.coPlayActionPulse = 1.0;
+        }
+        if (
+          this.livingTvGames.mode === 'launcher' &&
+          (e.code === 'Space' || e.code === 'Enter') &&
+          !e.repeat
+        ) {
+          this.selectLivingTvGame(this.livingTvGames.selectedGame, true);
+          return;
+        }
+      }
+
+      if (e.code === 'KeyF' && !e.repeat && !this.heroineEncounterActive) {
+        this.executeSofaMenuOption(this.getActiveSofaMenuOption());
       }
       return;
     }
 
-    if (e.code === 'KeyE') {
-      this.triggerHoveredInteraction();
-    } else if (e.code === 'KeyF') {
+    if (e.code === 'KeyF') {
       if (this.heroineEncounterActive) {
         return;
       }
-      // Proximity fallback for picking up the Toy Gun on the Living Room sofa first
+      // Prioritize direct crosshair target on the Toy Gun first
+      if (this.hoveredTarget?.id === 'item_toy_gun') {
+        this.triggerHoveredInteraction();
+        return;
+      }
+      // Strict proximity fallback ONLY when standing next to the north toy-gun cushion (never steals sofa sit!)
       const toyGunWorld = this.ctx.metaState.toyGunWorldMesh;
-      if (this.currentRoom === 'living' && toyGunWorld && toyGunWorld.visible) {
+      if (
+        this.currentRoom === 'living' &&
+        toyGunWorld &&
+        toyGunWorld.visible &&
+        this.hoveredTarget?.id !== 'living_sofa' &&
+        this.playerFeetPos.z < -5.85
+      ) {
         const distToGun = Math.hypot(
           this.playerFeetPos.x - toyGunWorld.position.x,
           this.playerFeetPos.z - toyGunWorld.position.z
         );
-        if (distToGun < 2.2) {
+        if (distToGun < 1.25) {
           const gunTarget = this.ctx.interactables.find((i) => i.id === 'item_toy_gun');
           if (gunTarget) {
             this.hoveredTarget = gunTarget;
@@ -2696,6 +2725,29 @@ export class ApartmentEngine {
     }
     if (Math.abs(e.deltaY) < 4) return;
     this.audio.unlock();
+
+    if (this.sofaSitState === 'sitting' || this.sofaSitState === 'seated') {
+      const opts = this.getSofaMenuOptions();
+      if (opts.length > 0) {
+        const step = e.deltaY > 0 ? 1 : -1;
+        this.sofaMenuIndex =
+          ((this.sofaMenuIndex + step) % opts.length + opts.length) % opts.length;
+        const activeOpt = this.getActiveSofaMenuOption();
+        if (
+          (activeOpt === 'snowball' || activeOpt === 'tank') &&
+          this.coPlayState === 'playing' &&
+          this.livingTvGames.mode === 'launcher'
+        ) {
+          this.livingTvGames.selectLauncherCard(activeOpt);
+          this.ctx.metaState.livingTv.accum = 1.0;
+        }
+        this.audio.playInteract(false);
+        this.emitSofaCoSitState();
+        this.emitSofaCoPlayState();
+      }
+      return;
+    }
+
     this.cycleInventoryItem(e.deltaY > 0 ? 1 : -1);
   };
 
@@ -2829,13 +2881,29 @@ export class ApartmentEngine {
         }
       }
 
-      // While seated on the Living Room sofa, clicking directly on the TV toggles it immediately!
+      // While seated on the Living Room sofa, clicking directly on the TV interacts with the console or toggles TV!
       if (this.sofaSitState === 'sitting' || this.sofaSitState === 'seated') {
         const tvTarget = this.ctx.interactables.find((i) => i.id === 'liv_tv');
         if (tvTarget) {
           this.raycaster.setFromCamera(this.isPointerLocked ? _centerNDC : _pointerNDC, this.camera);
           const hits = this.raycaster.intersectObject(tvTarget.mesh, true);
           if (hits.length > 0 && hits[0].distance < 7.5) {
+            if (this.coPlayState === 'playing') {
+              if (!this.ctx.metaState.livingTv.isOn) {
+                const nextOn = this.toggleLivingRoomTv();
+                this.callbacks.onHeroineSofaTvToggled?.(nextOn);
+              }
+              this.ctx.metaState.livingTv.channel = 0;
+              if (this.livingTvGames.mode === 'launcher' && hits[0].uv) {
+                const chosen: TvGameSelectionId = hits[0].uv.x < 0.5 ? 'snowball' : 'tank';
+                this.selectLivingTvGame(chosen, true);
+              } else if (hits[0].uv && hits[0].uv.y > 0.84 && hits[0].uv.x > 0.72) {
+                this.returnLivingTvToLauncher();
+              } else {
+                this.coPlayActionPulse = 1.0;
+              }
+              return;
+            }
             const nextOn = this.toggleLivingRoomTv();
             this.callbacks.onHeroineSofaTvToggled?.(nextOn);
             return;
@@ -5595,6 +5663,9 @@ export class ApartmentEngine {
           } else if (this.sofaSitState === 'seated') {
             this.sofaCamPos.set(seatEyeX, seatEyeY, seatEyeZ);
             this.playerFeetPos.set(seatEyeX, 0, seatEyeZ);
+            if (this.coPlayState === 'handoff_reach') {
+              this.coPlayHandoffProgress = Math.min(1, this.coPlayHandoffProgress + dt * 0.78);
+            }
             // Keep free mouse head-look within natural comfortable seated neck/torso turn range
             const relYaw = Math.atan2(
               Math.sin(this.yaw - defaultSofaYaw),
@@ -5761,8 +5832,18 @@ export class ApartmentEngine {
     // 3.5 Update articulated protagonist character rig or custom local VRM avatar
     const hideAvatar =
       this.viewMode === 'first-person' &&
-      (this.pcFocusState !== 'none' || this.sofaSitState !== 'none');
+      this.pcFocusState !== 'none';
     const hasCustomVrm = this.vrmAvatar?.hasVrm() ?? false;
+    const coPlayMoveX =
+      this.coPlayState === 'playing'
+        ? (this.keys['KeyD'] || this.keys['ArrowRight'] ? 1 : 0) -
+          (this.keys['KeyA'] || this.keys['ArrowLeft'] ? 1 : 0)
+        : 0;
+    const coPlayMoveY =
+      this.coPlayState === 'playing'
+        ? (this.keys['KeyS'] || this.keys['ArrowDown'] ? 1 : 0) -
+          (this.keys['KeyW'] || this.keys['ArrowUp'] ? 1 : 0)
+        : 0;
     this.protagonist?.update(dt, elapsed, {
       feetPos: this.playerFeetPos,
       yaw: this.yaw,
@@ -5771,6 +5852,18 @@ export class ApartmentEngine {
       isMoving: this.playerMovingThisFrame,
       viewMode: this.thirdPersonPreview ? 'overview' : this.viewMode,
       hideAll: hideAvatar || hasCustomVrm,
+      seatedOnSofa: this.sofaSitState !== 'none',
+      sofaBaseYaw: -Math.PI / 2,
+      coPlayMode:
+        this.coPlayState === 'handoff_reach'
+          ? 'reaching'
+          : this.coPlayState === 'playing'
+            ? 'holding'
+            : 'none',
+      coPlayReachProgress: this.coPlayHandoffProgress,
+      coPlayInputX: coPlayMoveX,
+      coPlayInputY: coPlayMoveY,
+      coPlayActionPulse: this.coPlayActionPulse,
     });
     this.vrmAvatar?.update(dt, elapsed, {
       feetPos: this.playerFeetPos,
@@ -5782,7 +5875,7 @@ export class ApartmentEngine {
       moveDirWorld: this.playerMoveDirWorld,
       viewMode: this.viewMode,
       thirdPersonPreview: this.thirdPersonPreview,
-      hideAll: hideAvatar,
+      hideAll: hideAvatar || this.sofaSitState !== 'none',
     });
 
     // 3.55 Update Heroine VRM (bed-edge sitting / stand-up walk / expressive gestures / follow player)
@@ -6105,10 +6198,10 @@ export class ApartmentEngine {
 
   /**
    * Renders crisp 512x288 multi-channel retro pixel TV programs onto the Living Room TV CanvasTexture:
-   * - CH-01: ★ COZY ARCADE TV (bouncing cat-cap runner)
+   * - CH-01: ★ TWILIGHT CO-OP CONSOLE (Playable 2P Snowball Fight & Co-Op Tank Battle)
    * - CH-02: ♥ STARLIGHT DRAMA (twinkling rooftop night romance)
    * - CH-03: ♪ NEKO KITCHEN (calico cat chef flipping star pancakes)
-   * Auto-cycles programs every ~24s and triggers the heroine's sofa posture-adjust micro-action.
+   * Auto-cycles passive TV programs every ~24s (paused while co-playing) and drives heroine reactions.
    */
   private updateLivingTvProgram(dt: number): void {
     const tv = this.ctx.metaState.livingTv;
@@ -6117,16 +6210,94 @@ export class ApartmentEngine {
     if (this.currentRoom === 'basement' || this.currentRoom === 'bathroom') return;
 
     tv.time += dt;
-    tv.channelTimer += dt;
+    if (this.coPlayState === 'none') {
+      tv.channelTimer += dt;
+      if (tv.channelTimer >= 24) {
+        this.switchLivingRoomTvChannel(false);
+      }
+    } else {
+      tv.channelTimer = 0;
+    }
     if (tv.switchFlashTimer > 0) {
       tv.switchFlashTimer = Math.max(0, tv.switchFlashTimer - dt);
     }
-    if (tv.channelTimer >= 24) {
-      this.switchLivingRoomTvChannel(false);
+
+    // Advance interactive console game every frame when on CH-01 so movement & physics stay silky
+    if (tv.channel === 0) {
+      const isActivelyPlaying =
+        this.coPlayState === 'playing' && this.sofaSitState === 'seated';
+      const tvInput: TvGameControlInput = isActivelyPlaying
+        ? {
+            moveX:
+              (this.keys['KeyD'] || this.keys['ArrowRight'] ? 1 : 0) -
+              (this.keys['KeyA'] || this.keys['ArrowLeft'] ? 1 : 0),
+            moveY:
+              (this.keys['KeyS'] || this.keys['ArrowDown'] ? 1 : 0) -
+              (this.keys['KeyW'] || this.keys['ArrowUp'] ? 1 : 0),
+            throwOrFire: Boolean(this.keys['Space'] || this.coPlayActionPulse > 0.72),
+            dodgeOrDash: Boolean(this.keys['ShiftLeft'] || this.keys['ShiftRight']),
+            buildWallOrShield: false,
+          }
+        : {
+            moveX: 0,
+            moveY: 0,
+            throwOrFire: false,
+            dodgeOrDash: false,
+            buildWallOrShield: false,
+          };
+      this.livingTvGames.update(dt, tvInput);
+
+      const events = this.livingTvGames.drainEvents();
+      if (isActivelyPlaying && events.length > 0 && !this.heroineEncounterActive) {
+        const heroine = this.vrmAvatar?.heroine;
+        for (const ev of events) {
+          heroine?.triggerGamingReactionPulse(ev === 'giant_pickup' || ev === 'p1_win' || ev === 'p2_win' ? 1.2 : 0.85);
+          if (this.sofaMicroMurmurCooldown <= 0 && this.ambientMurmurTimer <= 0.1) {
+            if (ev === 'match_start_snowball') {
+              this.sofaMicroMurmurCooldown = 5;
+              this.showAmbientHeroineMurmur('雪仗开打啦！看我先堆个雪墙挡住你～', 3.4, true);
+            } else if (ev === 'match_start_tank') {
+              this.sofaMicroMurmurCooldown = 5;
+              this.showAmbientHeroineMurmur('坦克大战！我掩护你，别让基地被炸到哦～', 3.4, true);
+            } else if (ev === 'p2_hit') {
+              this.sofaMicroMurmurCooldown = 7;
+              heroine?.triggerSofaBriefReaction(
+                { expression: 'sad', gesture: 'idle', blush: 0.35, headTilt: -0.06, leanForward: 0.06 },
+                2.2
+              );
+              this.showAmbientHeroineMurmur('呀！被你的大雪球砸中了啦，好凉～', 2.8, false);
+            } else if (ev === 'p1_hit') {
+              this.sofaMicroMurmurCooldown = 7;
+              heroine?.triggerSofaBriefReaction(
+                { expression: 'wink', gesture: 'idle', blush: 0.28, headTilt: 0.08, leanForward: 0.08 },
+                2.2
+              );
+              this.showAmbientHeroineMurmur('嘿嘿，命中！我的准头不错吧～', 2.8, true);
+            } else if (ev === 'giant_pickup') {
+              this.sofaMicroMurmurCooldown = 7;
+              this.showAmbientHeroineMurmur('哇！我捡到超级巨型雪球啦，小心接招！', 3.0, true);
+            } else if (ev === 'p1_win') {
+              this.sofaMicroMurmurCooldown = 6;
+              this.adjustHeroineIntimacy(2);
+              this.showAmbientHeroineMurmur('唔……这局被你赢过去了，再来一局！', 3.2, true);
+            } else if (ev === 'p2_win') {
+              this.sofaMicroMurmurCooldown = 6;
+              this.adjustHeroineIntimacy(2);
+              this.showAmbientHeroineMurmur('耶～这局是我赢啦，浅紫手柄立大功！', 3.2, true);
+            } else if (ev === 'tank_wave_clear') {
+              this.sofaMicroMurmurCooldown = 6;
+              this.adjustHeroineIntimacy(3);
+              this.showAmbientHeroineMurmur('配合得真默契！这一波敌方坦克全清光啦～', 3.4, true);
+            }
+          }
+        }
+      }
     }
 
+    const redrawInterval =
+      tv.channel === 0 && this.coPlayState === 'playing' ? 0.033 : 0.05;
     tv.accum += dt;
-    if (tv.accum < 0.05) return; // Crisp ~20 FPS authentic retro animation
+    if (tv.accum < redrawInterval) return;
     tv.accum = 0;
 
     const c = tv.ctx;
@@ -6138,6 +6309,18 @@ export class ApartmentEngine {
     const scaleY = rawH / H;
     const t = tv.time;
 
+    if (tv.channel === 0) {
+      this.livingTvGames.render(
+        c,
+        rawW,
+        rawH,
+        this.coPlayState === 'playing' && this.sofaSitState === 'seated'
+      );
+      tv.score = 1200 + Math.floor(t * 45) * 10;
+      this.renderLivingTvSwitchOverlay(c, rawW, rawH, tv.channel, tv.switchFlashTimer);
+      tv.texture.needsUpdate = true;
+      return;
+    }
     if (tv.channel === 1) {
       this.renderLivingTvStarlightDrama(c, W, H, scaleX, scaleY, t);
       this.renderLivingTvSwitchOverlay(c, rawW, rawH, tv.channel, tv.switchFlashTimer);
@@ -6763,6 +6946,17 @@ export class ApartmentEngine {
     this.heldPaperNote.visible = false;
     this.heldItemAnchor.add(this.heldPaperNote);
 
+    // 2b. First-person Protagonist Gaming Arms + White Xbox Controller Viewmodel & Heroine Held Controllers
+    this.protagonistGamingRig = buildProtagonistGamingArmsRig(this.uniforms, this.outlines);
+    this.heldItemAnchor.add(this.protagonistGamingRig.group);
+    const heroineWhitePad = buildXboxControllerMesh(this.uniforms, 'white', this.outlines, {
+      addOutline: true,
+    });
+    const heroinePurplePad = buildXboxControllerMesh(this.uniforms, 'purple', this.outlines, {
+      addOutline: true,
+    });
+    this.vrmAvatar.heroine.registerHeldControllerMeshes(heroineWhitePad, heroinePurplePad);
+
     // 3. Projectiles & Hit Spark FX containers
     this.projectileGroup.name = 'toy_projectiles';
     this.projectileGroup.userData.noProjectileHit = true;
@@ -7027,14 +7221,23 @@ export class ApartmentEngine {
 
   private syncHeldViewModelVisibility(): void {
     const equipped = this.getEquippedItem();
+    const hasCustomVrm = this.vrmAvatar?.hasVrm() ?? false;
+    const isCoPlayView =
+      (this.coPlayState === 'handoff_reach' || this.coPlayState === 'playing') &&
+      hasCustomVrm;
     const canShow =
       this.viewMode === 'first-person' &&
       !this.thirdPersonPreview &&
       this.pcFocusState === 'none' &&
-      equipped !== null;
+      (isCoPlayView || (this.sofaSitState === 'none' && equipped !== null));
     this.heldItemAnchor.visible = canShow;
-    this.heldToyGun.group.visible = canShow && equipped?.id === 'toy_gun';
-    this.heldPaperNote.visible = canShow && equipped?.id === 'paper_airplane_note';
+    this.heldToyGun.group.visible =
+      this.sofaSitState === 'none' && !isCoPlayView && canShow && equipped?.id === 'toy_gun';
+    this.heldPaperNote.visible =
+      this.sofaSitState === 'none' &&
+      !isCoPlayView &&
+      canShow &&
+      equipped?.id === 'paper_airplane_note';
   }
 
   public getLocalAvatarStatus(): VrmAvatarStatusSnapshot {
@@ -7053,6 +7256,14 @@ export class ApartmentEngine {
 
   public async importLocalAvatarFile(slot: LocalAssetSlot, file: File): Promise<void> {
     await this.vrmAvatar.importLocalFile(slot, file);
+  }
+
+  public async importLocalAvatarBackupPackage(file: File): Promise<{
+    slotCount: number;
+    poseCount: number;
+    heroineSpawned: boolean;
+  }> {
+    return this.vrmAvatar.importBackupPackage(file);
   }
 
   public async removeLocalAvatarSlot(slot: LocalAssetSlot): Promise<void> {
@@ -7175,6 +7386,10 @@ export class ApartmentEngine {
       return null;
     }
 
+    if (this.hoveredTarget?.id === 'item_toy_gun') {
+      return null;
+    }
+
     // 1. First-time bedroom bed-edge encounter
     if (this.currentRoom === 'bedroom' && heroine.isSeated()) {
       return heroine.getDistanceToWorldPoint(this.playerFeetPos) < 3.45 ? 'bed' : null;
@@ -7184,16 +7399,20 @@ export class ApartmentEngine {
     if (heroine.isFollowingPlayer()) {
       const distToHeroine = heroine.getDistanceToWorldPoint(this.playerFeetPos);
 
-      // Check if standing near Living Room main sofa and facing toward it
-      if (this.currentRoom === 'living') {
+      // Check if standing near Living Room south/center sofa cushions (separate from north toy gun at Z=-6.42)
+      if (
+        this.currentRoom === 'living' &&
+        this.playerFeetPos.z > -5.90 &&
+        this.playerFeetPos.z < -3.70
+      ) {
         const distToSofaFront = Math.hypot(
           this.playerFeetPos.x - 2.95,
-          this.playerFeetPos.z - (-5.25)
+          this.playerFeetPos.z - (-4.85)
         );
-        if (distToSofaFront < 2.65 && this.playerFeetPos.x < 4.55) {
+        if (distToSofaFront < 2.45 && this.playerFeetPos.x < 4.55) {
           this.camera.getWorldDirection(this.toyGunAimDirScratch);
           this.toyGunToHeroineScratch
-            .set(2.45 - this.camera.position.x, 0.55 - this.camera.position.y, -5.25 - this.camera.position.z)
+            .set(2.45 - this.camera.position.x, 0.55 - this.camera.position.y, -4.85 - this.camera.position.z)
             .normalize();
           const sofaDot = this.toyGunAimDirScratch.dot(this.toyGunToHeroineScratch);
 
@@ -7203,7 +7422,7 @@ export class ApartmentEngine {
             .normalize();
           const heroineDot = this.toyGunAimDirScratch.dot(this.toyGunToHeroineScratch);
 
-          if (sofaDot > 0.58 && (distToHeroine > 2.85 || sofaDot >= heroineDot - 0.08)) {
+          if (sofaDot > 0.62 && (distToHeroine > 2.85 || sofaDot >= heroineDot - 0.08)) {
             return 'sofa';
           }
         }
@@ -7215,6 +7434,90 @@ export class ApartmentEngine {
     }
 
     return null;
+  }
+
+  private getSofaMenuOptions(): SofaMenuOptionId[] {
+    const tvOn = this.ctx.metaState.livingTv.isOn;
+    if (this.coPlayState === 'none') {
+      if (!this.heroineEncounterActive) {
+        return [
+          'play_game',
+          'chat',
+          'toggle_tv',
+          ...(tvOn ? (['switch_channel'] as const) : []),
+          'stand_up',
+        ];
+      }
+      return [
+        'toggle_tv',
+        ...(tvOn ? (['switch_channel'] as const) : []),
+        'stand_up',
+      ];
+    }
+    if (this.coPlayState === 'playing') {
+      return [
+        'snowball',
+        'tank',
+        ...(this.livingTvGames.mode !== 'launcher' ? (['launcher'] as const) : []),
+        'stop_coplay',
+        'stand_up',
+      ];
+    }
+    return ['stand_up'];
+  }
+
+  private getActiveSofaMenuOption(): SofaMenuOptionId {
+    const opts = this.getSofaMenuOptions();
+    const idx = ((this.sofaMenuIndex % opts.length) + opts.length) % opts.length;
+    this.sofaMenuIndex = idx;
+    return opts[idx];
+  }
+
+  private emitSofaCoSitState(): void {
+    this.callbacks.onSofaCoSitChange?.({
+      active: this.sofaSitState === 'sitting' || this.sofaSitState === 'seated',
+      tvOn: this.ctx.metaState.livingTv.isOn,
+      activeOption: this.getActiveSofaMenuOption(),
+    });
+  }
+
+  private executeSofaMenuOption(option: SofaMenuOptionId): void {
+    switch (option) {
+      case 'play_game':
+        if (this.sofaSitState === 'seated') {
+          this.startSofaCoPlay();
+        }
+        break;
+      case 'chat':
+        this.callbacks.onRequestStartRoutineChat?.('sofa');
+        break;
+      case 'toggle_tv': {
+        const nextOn = this.toggleLivingRoomTv();
+        this.callbacks.onHeroineSofaTvToggled?.(nextOn);
+        if (!nextOn && this.coPlayState !== 'none') {
+          this.stopSofaCoPlay();
+        }
+        break;
+      }
+      case 'switch_channel':
+        this.switchLivingRoomTvChannel(true);
+        break;
+      case 'snowball':
+        this.selectLivingTvGame('snowball', true);
+        break;
+      case 'tank':
+        this.selectLivingTvGame('tank', true);
+        break;
+      case 'launcher':
+        this.returnLivingTvToLauncher();
+        break;
+      case 'stop_coplay':
+        this.stopSofaCoPlay();
+        break;
+      case 'stand_up':
+        this.standUpFromSofaCoSit();
+        break;
+    }
   }
 
   public startSofaCoSit(): void {
@@ -7254,13 +7557,15 @@ export class ApartmentEngine {
     this.sofaCamPos.copy(this.camera.position);
     this.sofaSitState = 'sitting';
     this.sofaStateElapsed = 0;
+    this.sofaMenuIndex = 0;
     this.keys = {};
+    this.syncHeldViewModelVisibility();
 
     const tvOn = this.ctx.metaState.livingTv.isOn;
     heroine.setSofaTvIsOn(tvOn);
     heroine.beginSitOnLivingSofa(
-      new THREE.Vector3(2.68, 0, -5.68),
-      new THREE.Vector3(3.48, 0, -5.68),
+      new THREE.Vector3(2.74, 0, -5.68),
+      new THREE.Vector3(3.14, 0, -5.68),
       0.495,
       Math.PI / 2,
       new THREE.Vector3(6.74, 1.28, -5.08),
@@ -7282,11 +7587,14 @@ export class ApartmentEngine {
     );
 
     this.audio.playInteract(false);
-    this.callbacks.onSofaCoSitChange?.({ active: true, tvOn });
+    this.emitSofaCoSitState();
   }
 
   public standUpFromSofaCoSit(): void {
     if (this.sofaSitState === 'none' || this.sofaSitState === 'standing') return;
+    if (this.coPlayState !== 'none') {
+      this.stopSofaCoPlay();
+    }
     if (this.heroineEncounterActive) {
       this.finishRoutineHeroineChat();
     }
@@ -7294,12 +7602,139 @@ export class ApartmentEngine {
     this.floatingSubtitles.dropCurrentLine();
     this.sofaSitState = 'standing';
     this.sofaStateElapsed = 0;
-    this.vrmAvatar?.heroine.beginStandUpFromLivingSofa(new THREE.Vector3(3.48, 0, -5.68));
+    this.sofaMenuIndex = 0;
+    this.vrmAvatar?.heroine.beginStandUpFromLivingSofa(new THREE.Vector3(3.14, 0, -5.68));
     this.audio.playInteract(false);
-    this.callbacks.onSofaCoSitChange?.({
-      active: false,
-      tvOn: this.ctx.metaState.livingTv.isOn,
+    this.emitSofaCoSitState();
+  }
+
+  private emitSofaCoPlayState(): void {
+    const phase: 'none' | 'fetching' | 'playing' =
+      this.coPlayState === 'none'
+        ? 'none'
+        : this.coPlayState === 'playing'
+          ? 'playing'
+          : 'fetching';
+    this.callbacks.onSofaCoPlayChange?.({
+      phase,
+      tvScreenMode: this.livingTvGames.mode,
+      selectedGame: this.livingTvGames.selectedGame,
+      activeOption: this.getActiveSofaMenuOption(),
     });
+  }
+
+  public startSofaCoPlay(): void {
+    const heroine = this.vrmAvatar?.heroine;
+    if (
+      !heroine ||
+      !heroine.hasVrm() ||
+      !heroine.isSpawned() ||
+      this.sofaSitState !== 'seated' ||
+      this.coPlayState !== 'none' ||
+      heroine.isCoPlayCutsceneBusy()
+    ) {
+      return;
+    }
+    if (this.heroineEncounterActive) {
+      this.finishRoutineHeroineChat();
+    }
+
+    const tv = this.ctx.metaState.livingTv;
+    tv.channel = 0;
+    tv.channelTimer = 0;
+    tv.accum = 1.0;
+    this.livingTvGames.returnToLauncher();
+    if (!tv.isOn) {
+      const nextOn = this.toggleLivingRoomTv();
+      this.callbacks.onHeroineSofaTvToggled?.(nextOn);
+    }
+
+    this.coPlayState = 'fetching';
+    this.coPlayHandoffProgress = 0;
+    this.coPlayActionPulse = 0;
+    this.sofaMenuIndex = 0;
+    this.emitSofaCoPlayState();
+    this.audio.playInteract(true);
+    this.showAmbientHeroineMurmur('好呀！我去茶几把两只 Xbox 手柄拿过来，等我一下～', 3.8, true);
+
+    heroine.beginSofaCoPlayCutscene({
+      onPickedUpFromTable: () => {
+        const consoleProps = this.ctx.metaState.livingConsole;
+        if (consoleProps.tableWhitePad) consoleProps.tableWhitePad.visible = false;
+        if (consoleProps.tablePurplePad) consoleProps.tablePurplePad.visible = false;
+        this.audio.playInteract(false);
+        this.shadowDirty = true;
+      },
+      onHandoffStart: () => {
+        if (this.coPlayState !== 'fetching') return;
+        this.coPlayState = 'handoff_reach';
+        this.coPlayHandoffProgress = 0;
+        this.syncHeldViewModelVisibility();
+        this.showAmbientHeroineMurmur('给，白色手柄是你的，浅紫色归我～接着！', 3.4, true);
+      },
+      onWhitePadTaken: () => {
+        this.audio.playEquipToggle(true);
+      },
+      onBackSeated: () => {
+        if (this.coPlayState === 'none') return;
+        this.coPlayState = 'playing';
+        this.sofaMenuIndex = 0;
+        this.livingTvGames.returnToLauncher();
+        this.ctx.metaState.livingTv.channel = 0;
+        this.ctx.metaState.livingTv.accum = 1.0;
+        this.syncHeldViewModelVisibility();
+        this.emitSofaCoPlayState();
+        this.audio.playInteract(true);
+        this.showAmbientHeroineMurmur('好啦！看着电视选一局吧：双人打雪仗还是坦克大战？', 4.4, true);
+      },
+    });
+  }
+
+  public stopSofaCoPlay(): void {
+    if (this.coPlayState === 'none') return;
+    this.coPlayState = 'none';
+    this.coPlayHandoffProgress = 0;
+    this.coPlayActionPulse = 0;
+    this.sofaMenuIndex = 0;
+    const consoleProps = this.ctx.metaState.livingConsole;
+    if (consoleProps.tableWhitePad) consoleProps.tableWhitePad.visible = true;
+    if (consoleProps.tablePurplePad) consoleProps.tablePurplePad.visible = true;
+    this.vrmAvatar?.heroine.endSofaCoPlay();
+    this.protagonistGamingRig?.setState('hidden', 0, 0, 0, 0, 0);
+    this.livingTvGames.returnToLauncher();
+    this.ctx.metaState.livingTv.accum = 1.0;
+    this.syncHeldViewModelVisibility();
+    this.emitSofaCoPlayState();
+    this.emitSofaCoSitState();
+    this.shadowDirty = true;
+  }
+
+  public selectLivingTvGame(game: TvGameSelectionId, launchNow = true): void {
+    const tv = this.ctx.metaState.livingTv;
+    if (!tv.isOn) {
+      const nextOn = this.toggleLivingRoomTv();
+      this.callbacks.onHeroineSofaTvToggled?.(nextOn);
+    }
+    tv.channel = 0;
+    tv.channelTimer = 0;
+    if (launchNow) {
+      this.livingTvGames.launchGame(game);
+      this.sofaMenuIndex = 2; // Highlight "游戏选单" cleanly once match begins
+    } else {
+      this.livingTvGames.selectLauncherCard(game);
+    }
+    tv.accum = 1.0;
+    this.audio.playInteract(true);
+    this.emitSofaCoPlayState();
+  }
+
+  public returnLivingTvToLauncher(): void {
+    this.livingTvGames.returnToLauncher();
+    this.ctx.metaState.livingTv.channel = 0;
+    this.ctx.metaState.livingTv.accum = 1.0;
+    this.sofaMenuIndex = 0;
+    this.audio.playInteract(false);
+    this.emitSofaCoPlayState();
   }
 
   private applyLivingTvMaterialState(isOn: boolean): void {
@@ -7336,7 +7771,7 @@ export class ApartmentEngine {
     this.audio.playInteract(true);
     this.vrmAvatar?.heroine.setSofaTvIsOn(nextOn);
     if (this.sofaSitState !== 'none') {
-      this.callbacks.onSofaCoSitChange?.({ active: true, tvOn: nextOn });
+      this.emitSofaCoSitState();
       if (!this.heroineEncounterActive) {
         if (nextOn) {
           this.vrmAvatar?.heroine.triggerSofaBriefReaction(
@@ -7353,7 +7788,7 @@ export class ApartmentEngine {
         } else {
           this.vrmAvatar?.heroine.triggerSofaBriefReaction(
             {
-              expression: 'relaxed',
+              expression: 'happy',
               gesture: 'idle',
               blush: 0.26,
               headTilt: -0.05,
@@ -7550,6 +7985,9 @@ export class ApartmentEngine {
     this.encounterIsMainBedroom = false;
     this.encounterInactivityTimer = 0;
     this.ambientMurmurTimer = 0;
+    if (this.coPlayState !== 'none') {
+      this.stopSofaCoPlay();
+    }
     if (this.sofaSitState !== 'none') {
       this.sofaSitState = 'none';
       this.playerFeetPos.copy(this.sofaSavedStandPos);
@@ -8138,8 +8576,44 @@ export class ApartmentEngine {
   }
 
   private updateHeldItemViewModel(dt: number, elapsed: number): void {
+    this.coPlayActionPulse = Math.max(0, this.coPlayActionPulse - dt * 3.2);
     this.syncHeldViewModelVisibility();
-    if (!this.heldItemAnchor.visible) return;
+    if (!this.heldItemAnchor.visible) {
+      this.protagonistGamingRig?.setState('hidden', 0, elapsed, 0, 0, 0);
+      return;
+    }
+
+    if (this.coPlayState === 'handoff_reach') {
+      this.protagonistGamingRig.setState(
+        'reaching',
+        this.coPlayHandoffProgress,
+        elapsed,
+        0,
+        0,
+        0
+      );
+      return;
+    }
+
+    if (this.coPlayState === 'playing') {
+      const moveX =
+        (this.keys['KeyD'] || this.keys['ArrowRight'] ? 1 : 0) -
+        (this.keys['KeyA'] || this.keys['ArrowLeft'] ? 1 : 0);
+      const moveY =
+        (this.keys['KeyS'] || this.keys['ArrowDown'] ? 1 : 0) -
+        (this.keys['KeyW'] || this.keys['ArrowUp'] ? 1 : 0);
+      this.protagonistGamingRig.setState(
+        'holding',
+        1,
+        elapsed,
+        moveX,
+        moveY,
+        this.coPlayActionPulse
+      );
+      return;
+    }
+
+    this.protagonistGamingRig.setState('hidden', 0, elapsed, 0, 0, 0);
 
     this.gunFireCooldown = Math.max(0, this.gunFireCooldown - dt);
     this.heldEquipAnim = THREE.MathUtils.damp(this.heldEquipAnim, 1.0, 12.0, dt);

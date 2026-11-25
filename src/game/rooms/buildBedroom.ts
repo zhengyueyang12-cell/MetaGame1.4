@@ -1474,7 +1474,7 @@ export function buildBedroom(ctx: RoomBuildContext, playDoorAudio: (open: boolea
     baseSpinVel: 0,
   });
 
-  registerInteractable('bed_pc', '卧室老式桌面电脑', '按 F / E 坐到电脑前', 'bedroom', monBody, () => ({
+  registerInteractable('bed_pc', '卧室老式桌面电脑', '坐到电脑前', 'bedroom', monBody, () => ({
     title: '二十年代无审查老式主机',
     message: '正在接入桌面老式电脑……',
     openPcAction: true,

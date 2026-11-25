@@ -91,6 +91,10 @@ export function resetHeroinePoseOverride(poseId: HeroinePoseId): HeroinePoseDefi
 export function resetAllHeroinePoseOverrides(): void;
 export function hasHeroinePoseOverride(poseId: HeroinePoseId): boolean;
 export function getHeroinePoseOverrideCount(): number;
+export function exportHeroinePoseOverridesMap(): Record<string, Partial<HeroinePoseDefinition>>;
+export function importHeroinePoseOverridesMap(
+  raw: Record<string, unknown> | null | undefined
+): number;
 export function loadHeroineTunerPrefs(): HeroineTunerPrefs;
 export function saveHeroineTunerPrefs(prefs: HeroineTunerPrefs): void;
 export function formatHeroinePoseSnippet(

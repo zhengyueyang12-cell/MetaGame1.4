@@ -99,9 +99,9 @@ export const BEDROOM_ENCOUNTER_NODES: Record<string, EncounterNode> = {
     id: 'greet_wave',
     text: '呀——你终于回卧室啦，我在这里等你好一会儿了呢。',
     performance: {
-      expression: 'happy',
+      expression: 'neutral',
       gesture: 'talk_gentle',
-      blush: 0.16,
+      blush: 0.22,
       headTilt: 0.05,
       leanForward: 0.10,
     },
@@ -165,7 +165,7 @@ export const BEDROOM_ENCOUNTER_NODES: Record<string, EncounterNode> = {
     id: 'reply_what_1',
     text: '唔，要真按你们那套理论解释起来，估计得写满一整块黑板呢。',
     performance: {
-      expression: 'relaxed',
+      expression: 'neutral',
       gesture: 'finger_cheek',
       blush: 0.16,
       headTilt: 0.12,
@@ -212,7 +212,7 @@ export const BEDROOM_ENCOUNTER_NODES: Record<string, EncounterNode> = {
       stopDist: 1.28,
     },
     performance: {
-      expression: 'relaxed',
+      expression: 'happy',
       gesture: 'reach_hand',
       blush: 0.34,
       headTilt: 0.06,
@@ -244,7 +244,7 @@ export const BEDROOM_ENCOUNTER_NODES: Record<string, EncounterNode> = {
       stopDist: 1.30,
     },
     performance: {
-      expression: 'relaxed',
+      expression: 'neutral',
       gesture: 'reach_hand',
       blush: 0.56,
       headTilt: -0.06,
@@ -262,7 +262,7 @@ export const BEDROOM_ENCOUNTER_NODES: Record<string, EncounterNode> = {
       type: 'sit_swivel_chair',
     },
     performance: {
-      expression: 'relaxed',
+      expression: 'neutral',
       gesture: 'idle',
       blush: 0.24,
       headTilt: 0.06,
@@ -310,6 +310,13 @@ export const BEDROOM_ENCOUNTER_NODES: Record<string, EncounterNode> = {
   propose_living_2: {
     id: 'propose_living_2',
     text: '不如我们去客厅沙发窝着，一起玩会儿游戏吧？好不好嘛～',
+    performance: {
+      expression: 'neutral',
+      gesture: 'hands_chest',
+      blush: 0.42,
+      headTilt: 0.06,
+      leanForward: 0.16,
+    },
     hearts: true,
     choices: [
       {
@@ -349,7 +356,7 @@ export const BEDROOM_ENCOUNTER_NODES: Record<string, EncounterNode> = {
     id: 'routine_hub',
     text: '嗯？怎么啦，突然叫住我——想聊点什么都可以哦～',
     performance: {
-      expression: 'happy',
+      expression: 'neutral',
       gesture: 'talk_gentle',
       blush: 0.22,
       headTilt: 0.07,
@@ -383,7 +390,7 @@ export const BEDROOM_ENCOUNTER_NODES: Record<string, EncounterNode> = {
     id: 'sofa_hub',
     text: '沙发好软呀……挨着你坐在这里，感觉连时间都慢下来了呢～',
     performance: {
-      expression: 'relaxed',
+      expression: 'happy',
       gesture: 'hands_chest',
       blush: 0.34,
       headTilt: 0.08,
@@ -391,6 +398,11 @@ export const BEDROOM_ENCOUNTER_NODES: Record<string, EncounterNode> = {
     },
     hearts: true,
     choices: [
+      {
+        id: 'sofa_pick_coplay',
+        label: '一起拿手柄打双人游戏吧！',
+        nextNodeId: '__START_SOFA_COPLAY__',
+      },
       {
         id: 'sofa_pick_recap',
         label: '想再问问刚才那些事',
@@ -419,7 +431,7 @@ export const BEDROOM_ENCOUNTER_NODES: Record<string, EncounterNode> = {
     id: 'routine_recap_hub',
     text: '嘿嘿，还惦记着刚才的事呀？你想听哪一段，我都老实告诉你～',
     performance: {
-      expression: 'relaxed',
+      expression: 'neutral',
       gesture: 'finger_cheek',
       blush: 0.20,
       headTilt: 0.10,
@@ -490,7 +502,7 @@ export const BEDROOM_ENCOUNTER_NODES: Record<string, EncounterNode> = {
     id: 'routine_game_hub',
     text: '想听听屏幕那头的世界呀？其实那里没有你想象得那么冰冷哦。',
     performance: {
-      expression: 'relaxed',
+      expression: 'neutral',
       gesture: 'talk_gentle',
       blush: 0.18,
       headTilt: -0.06,
@@ -519,7 +531,7 @@ export const BEDROOM_ENCOUNTER_NODES: Record<string, EncounterNode> = {
     id: 'routine_game_world',
     text: '那里总是停在傍晚刚亮起路灯的那一分钟，风很轻、BGM 也很温柔……不过一个人循环久了，还是会很想见你呀。',
     performance: {
-      expression: 'relaxed',
+      expression: 'neutral',
       gesture: 'hands_chest',
       blush: 0.34,
       headTilt: 0.06,
@@ -561,7 +573,7 @@ export const BEDROOM_ENCOUNTER_NODES: Record<string, EncounterNode> = {
     id: 'routine_casual_1',
     text: '对了，你这间公寓收拾得比我想象中温馨多了呢——不过地下室那块地方，下次别一个人黑灯瞎火乱钻啦。',
     performance: {
-      expression: 'relaxed',
+      expression: 'neutral',
       gesture: 'arms_crossed',
       blush: 0.24,
       headTilt: -0.06,
@@ -602,7 +614,7 @@ export const BEDROOM_ENCOUNTER_NODES: Record<string, EncounterNode> = {
     id: 'routine_casual_4',
     text: '如果逛累了就去客厅沙发坐会儿吧，把电视打开看那个傻乎乎的像素小游戏，我陪你一起发呆～',
     performance: {
-      expression: 'relaxed',
+      expression: 'neutral',
       gesture: 'hands_chest',
       blush: 0.30,
       headTilt: -0.05,
@@ -662,7 +674,7 @@ export const BEDROOM_ENCOUNTER_NODES: Record<string, EncounterNode> = {
     id: 'sofa_bye',
     text: '嗯～那我就靠在旁边陪着你，想看电视或者起身的时候告诉我一声就好。',
     performance: {
-      expression: 'relaxed',
+      expression: 'happy',
       gesture: 'idle',
       blush: 0.28,
       headTilt: 0.05,

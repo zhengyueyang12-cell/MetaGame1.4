@@ -1,5 +1,9 @@
 import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react';
 import type { EncounterChoice } from '../data/bedroomEncounterScript';
+import type {
+  TvConsoleScreenMode,
+  TvGameSelectionId,
+} from '../game/tv/LivingTvGamesEngine';
 
 export interface EncounterSpatialProjection {
   promptVisible: boolean;
@@ -51,6 +55,9 @@ interface BedroomEncounterOverlayProps {
   choices: EncounterChoice[];
   sofaCoSeated?: boolean;
   livingTvOn?: boolean;
+  coPlayPhase?: 'none' | 'fetching' | 'playing';
+  tvScreenMode?: TvConsoleScreenMode;
+  selectedTvGame?: TvGameSelectionId;
   onStartEncounter: () => void;
   onAdvanceLine: () => void;
   onSelectChoice: (choice: EncounterChoice) => void;
@@ -58,6 +65,10 @@ interface BedroomEncounterOverlayProps {
   onToggleLivingTv?: () => void;
   onSwitchLivingTvChannel?: () => void;
   onStandUpSofa?: () => void;
+  onStartSofaCoPlay?: () => void;
+  onStopSofaCoPlay?: () => void;
+  onSelectTvGame?: (game: TvGameSelectionId) => void;
+  onReturnTvLauncher?: () => void;
 }
 
 const CUTE_FONT_FAMILY =
@@ -85,6 +96,9 @@ export const BedroomEncounterOverlay = forwardRef<
     choices,
     sofaCoSeated = false,
     livingTvOn = false,
+    coPlayPhase = 'none',
+    tvScreenMode = 'launcher',
+    selectedTvGame = 'snowball',
     onStartEncounter,
     onAdvanceLine,
     onSelectChoice,
@@ -92,6 +106,10 @@ export const BedroomEncounterOverlay = forwardRef<
     onToggleLivingTv,
     onSwitchLivingTvChannel,
     onStandUpSofa,
+    onStartSofaCoPlay,
+    onStopSofaCoPlay,
+    onSelectTvGame,
+    onReturnTvLauncher,
   },
   ref
 ) {
@@ -283,14 +301,62 @@ export const BedroomEncounterOverlay = forwardRef<
 
       {/* 1b. Minimalist floating Sofa Co-Sitting action strip (pure pink-purple outlined text, zero card/box) */}
       {sofaCoSeated && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-6 pointer-events-auto">
-          {mode === 'hidden' && (
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 flex flex-wrap items-center justify-center gap-5 max-w-[92vw] pointer-events-auto">
+          {coPlayPhase === 'none' && (
             <>
+              {mode === 'hidden' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onStartSofaCoPlay?.();
+                    }}
+                    className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
+                  >
+                    <span
+                      className="text-[16px] tracking-[0.08em] text-[#aef6ff] group-hover:text-[#ffd8f8]"
+                      style={PINK_PURPLE_OUTLINE_STYLE}
+                    >
+                      一起打游戏
+                    </span>
+                    <span
+                      className="text-[12px] text-[#e7aaff]"
+                      style={PINK_PURPLE_OUTLINE_STYLE}
+                    >
+                      [G]
+                    </span>
+                  </button>
+                  <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSofaChat?.();
+                    }}
+                    className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
+                  >
+                    <span
+                      className="text-[16px] tracking-[0.08em] text-[#ffe0f7] group-hover:text-[#ecc4ff]"
+                      style={PINK_PURPLE_OUTLINE_STYLE}
+                    >
+                      和她聊聊
+                    </span>
+                    <span
+                      className="text-[12px] text-[#e7aaff]"
+                      style={PINK_PURPLE_OUTLINE_STYLE}
+                    >
+                      [F]
+                    </span>
+                  </button>
+                  <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
+                </>
+              )}
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onSofaChat?.();
+                  onToggleLivingTv?.();
                 }}
                 className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
               >
@@ -298,65 +364,147 @@ export const BedroomEncounterOverlay = forwardRef<
                   className="text-[16px] tracking-[0.08em] text-[#ffe0f7] group-hover:text-[#ecc4ff]"
                   style={PINK_PURPLE_OUTLINE_STYLE}
                 >
-                  和她聊聊
+                  {livingTvOn ? '关掉电视' : '打开电视'}
                 </span>
                 <span
                   className="text-[12px] text-[#e7aaff]"
                   style={PINK_PURPLE_OUTLINE_STYLE}
                 >
-                  [F]
+                  [T]
                 </span>
               </button>
-              <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
+              {livingTvOn && (
+                <>
+                  <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSwitchLivingTvChannel?.();
+                    }}
+                    className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
+                  >
+                    <span
+                      className="text-[16px] tracking-[0.08em] text-[#ffe0f7] group-hover:text-[#ecc4ff]"
+                      style={PINK_PURPLE_OUTLINE_STYLE}
+                    >
+                      换台
+                    </span>
+                    <span
+                      className="text-[12px] text-[#e7aaff]"
+                      style={PINK_PURPLE_OUTLINE_STYLE}
+                    >
+                      [C]
+                    </span>
+                  </button>
+                </>
+              )}
             </>
           )}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleLivingTv?.();
-            }}
-            className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
-          >
+
+          {coPlayPhase === 'fetching' && (
             <span
-              className="text-[16px] tracking-[0.08em] text-[#ffe0f7] group-hover:text-[#ecc4ff]"
+              className="text-[15.5px] tracking-[0.09em] text-[#ffdcf5]"
               style={PINK_PURPLE_OUTLINE_STYLE}
             >
-              {livingTvOn ? '关掉电视' : '打开电视'}
+              她正在茶几取来两只手柄……
             </span>
-            <span
-              className="text-[12px] text-[#e7aaff]"
-              style={PINK_PURPLE_OUTLINE_STYLE}
-            >
-              [T]
-            </span>
-          </button>
-          {livingTvOn && (
+          )}
+
+          {coPlayPhase === 'playing' && (
             <>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectTvGame?.('snowball');
+                }}
+                className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
+              >
+                <span
+                  className={`text-[16px] tracking-[0.08em] ${
+                    tvScreenMode === 'snowball' ||
+                    (tvScreenMode === 'launcher' && selectedTvGame === 'snowball')
+                      ? 'text-[#7cebff]'
+                      : 'text-[#ffe0f7] group-hover:text-[#aef6ff]'
+                  }`}
+                  style={PINK_PURPLE_OUTLINE_STYLE}
+                >
+                  ① 双人打雪仗
+                </span>
+              </button>
               <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onSwitchLivingTvChannel?.();
+                  onSelectTvGame?.('tank');
                 }}
                 className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
               >
                 <span
-                  className="text-[16px] tracking-[0.08em] text-[#ffe0f7] group-hover:text-[#ecc4ff]"
+                  className={`text-[16px] tracking-[0.08em] ${
+                    tvScreenMode === 'tank' ||
+                    (tvScreenMode === 'launcher' && selectedTvGame === 'tank')
+                      ? 'text-[#ffca7a]'
+                      : 'text-[#ffe0f7] group-hover:text-[#ffdca8]'
+                  }`}
                   style={PINK_PURPLE_OUTLINE_STYLE}
                 >
-                  换台
+                  ② 坦克大战
+                </span>
+              </button>
+              {tvScreenMode !== 'launcher' && (
+                <>
+                  <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onReturnTvLauncher?.();
+                    }}
+                    className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
+                  >
+                    <span
+                      className="text-[15px] tracking-[0.08em] text-[#ffe0f7] group-hover:text-[#ecc4ff]"
+                      style={PINK_PURPLE_OUTLINE_STYLE}
+                    >
+                      游戏选单
+                    </span>
+                    <span
+                      className="text-[12px] text-[#e7aaff]"
+                      style={PINK_PURPLE_OUTLINE_STYLE}
+                    >
+                      [M]
+                    </span>
+                  </button>
+                </>
+              )}
+              <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStopSofaCoPlay?.();
+                }}
+                className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
+              >
+                <span
+                  className="text-[15px] tracking-[0.08em] text-[#ffe0f7] group-hover:text-[#ecc4ff]"
+                  style={PINK_PURPLE_OUTLINE_STYLE}
+                >
+                  放回手柄
                 </span>
                 <span
                   className="text-[12px] text-[#e7aaff]"
                   style={PINK_PURPLE_OUTLINE_STYLE}
                 >
-                  [C]
+                  [Esc]
                 </span>
               </button>
             </>
           )}
+
           <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
           <button
             type="button"
@@ -372,12 +520,14 @@ export const BedroomEncounterOverlay = forwardRef<
             >
               起身离开
             </span>
-            <span
-              className="text-[12px] text-[#e7aaff]"
-              style={PINK_PURPLE_OUTLINE_STYLE}
-            >
-              [E / Space]
-            </span>
+            {coPlayPhase === 'none' && (
+              <span
+                className="text-[12px] text-[#e7aaff]"
+                style={PINK_PURPLE_OUTLINE_STYLE}
+              >
+                [E / Space]
+              </span>
+            )}
           </button>
         </div>
       )}

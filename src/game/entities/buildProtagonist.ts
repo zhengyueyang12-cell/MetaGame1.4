@@ -4,6 +4,7 @@ import {
   type OutlineRegistry,
   type TwilightUniforms,
 } from '../pipeline';
+import { buildXboxControllerMesh } from '../props/livingConsoleProps';
 
 export interface ProtagonistUpdateParams {
   feetPos: THREE.Vector3;
@@ -13,6 +14,13 @@ export interface ProtagonistUpdateParams {
   isMoving: boolean;
   viewMode: 'first-person' | 'overview';
   hideAll?: boolean;
+  seatedOnSofa?: boolean;
+  sofaBaseYaw?: number;
+  coPlayMode?: 'none' | 'reaching' | 'holding';
+  coPlayReachProgress?: number;
+  coPlayInputX?: number;
+  coPlayInputY?: number;
+  coPlayActionPulse?: number;
 }
 
 export interface ProtagonistRig {
@@ -1854,6 +1862,19 @@ export function createProtagonist(
   const leftLeg = buildLeg(-1);
   const rightLeg = buildLeg(1);
 
+  // Seated Xbox controller mesh anchored to bodyGroup and dynamically positioned between palms
+  const seatedControllerGroup = buildXboxControllerMesh(uniforms, 'white', outlines, {
+    addOutline: true,
+    isDynamic: true,
+  });
+  seatedControllerGroup.visible = false;
+  bodyGroup.add(seatedControllerGroup);
+
+  // Zero-GC scratch vectors for dynamic controller placement
+  const _padLeftPos = new THREE.Vector3();
+  const _padRightPos = new THREE.Vector3();
+  const _padMidPos = new THREE.Vector3();
+
   // =========================================================================
   // 7. TRIANGLE COUNT & RENDER PASS MODE VISIBILITY (First-Person vs Mirror)
   // =========================================================================
@@ -1873,20 +1894,21 @@ export function createProtagonist(
 
   let currentRenderPassMode: 'first-person' | 'overview' | 'mirror' = 'first-person';
   let lastPitch = 0;
+  let lastSeatedOnSofa = false;
 
   const setRenderPassMode = (mode: 'first-person' | 'overview' | 'mirror') => {
     currentRenderPassMode = mode;
     if (mode === 'first-person') {
-      // Position body 20cm BEHIND eye center (local -Z = behind forward gaze!)
-      // Hide body completely during normal forward gaze so player never sees a headless torso running in front!
-      // Only show torso/legs/sneakers when looking sharply down or reaching out with hand.
+      // Position body slightly BEHIND eye center (local -Z = behind forward gaze!)
+      // When seated on the sofa, keep the body visible (without head/neck blocking the camera)
+      // so protagonist's real seated hoodie torso, legs, sneakers, arms & controller appear naturally.
       headGroup.visible = false;
       neckMesh.visible = false;
       chinShadowMesh.visible = false;
       hoodCollarGroup.visible = false;
       teeCollarMesh.visible = false;
-      bodyGroup.position.set(0, 0, -0.20);
-      bodyGroup.visible = lastPitch <= -0.58 || reachTimer > 0.01;
+      bodyGroup.position.set(0, 0, lastSeatedOnSofa ? -0.18 : -0.20);
+      bodyGroup.visible = lastSeatedOnSofa || lastPitch <= -0.58 || reachTimer > 0.01;
     } else {
       bodyGroup.visible = true;
       headGroup.visible = true;
@@ -1918,21 +1940,53 @@ export function createProtagonist(
   let headLeadYaw = 0;
   let torsoLagYaw = 0;
 
+  // Smoothed seated arm angles (zero-GC state) for seamless rest <-> reach <-> holding transitions
+  let lShX = -0.42;
+  let lShY = 0.14;
+  let lShZ = -0.06;
+  let lElX = -0.96;
+  let lWrX = -0.04;
+  let lHandY = Math.PI * 0.44;
+  let rShX = -0.42;
+  let rShY = -0.14;
+  let rShZ = 0.06;
+  let rElX = -0.96;
+  let rWrX = -0.04;
+  let rHandY = -Math.PI * 0.44;
+  let lCurl = 0.24;
+  let rCurl = 0.24;
+
   const triggerHandReach = (strength = 1.0) => {
     reachTimer = 0.62;
     reachStrength = THREE.MathUtils.clamp(strength, 0.4, 1.3);
   };
 
+  const applyHandCurl = (arm: ArmRig, curl: number) => {
+    for (let fi = 0; fi < arm.fingers.length; fi++) {
+      const cascade = 0.82 + fi * 0.12;
+      arm.fingers[fi].base.rotation.x = curl * 0.75 * cascade;
+      arm.fingers[fi].mid.rotation.x = curl * 1.08 * cascade;
+      arm.fingers[fi].tip.rotation.x = curl * 0.65 * cascade;
+    }
+    arm.thumb.tip.rotation.x = curl * 0.45;
+  };
+
   const update = (dt: number, elapsed: number, params: ProtagonistUpdateParams) => {
     const safeDt = Math.min(dt, 0.05);
     lastPitch = params.pitch;
+    const isSeatedOnSofa = Boolean(params.seatedOnSofa);
+    lastSeatedOnSofa = isSeatedOnSofa;
     root.visible = !params.hideAll;
-    if (params.hideAll) return;
+    if (params.hideAll) {
+      seatedControllerGroup.visible = false;
+      return;
+    }
 
     // Position & facing alignment (character local +Z faces forward; camera looks along -Z)
     root.position.copy(params.feetPos);
-    const targetBodyYaw = params.yaw + Math.PI;
-    root.rotation.set(0, targetBodyYaw, 0);
+    const bodyYaw =
+      isSeatedOnSofa && params.sofaBaseYaw !== undefined ? params.sofaBaseYaw : params.yaw;
+    root.rotation.set(0, bodyYaw + Math.PI, 0);
 
     // Wrapped yaw velocity for realistic turning anticipation
     if (!yawInitialized) {
@@ -1954,7 +2008,7 @@ export function createProtagonist(
 
     // Smooth locomotion blend
     const speedFactor = THREE.MathUtils.clamp(params.walkSpeed / 2.6, 0, 1.45);
-    const targetMove = params.isMoving ? Math.max(0.28, speedFactor) : 0;
+    const targetMove = !isSeatedOnSofa && params.isMoving ? Math.max(0.28, speedFactor) : 0;
     moveBlend += (targetMove - moveBlend) * Math.min(1, safeDt * 9.5);
 
     if (moveBlend > 0.01) {
@@ -2000,14 +2054,197 @@ export function createProtagonist(
       }
     }
 
+    const breath = Math.sin(elapsed * 1.55);
+    const idleShift = Math.sin(elapsed * 0.62);
+    const idleCuriosity = Math.sin(elapsed * 0.47 + 0.8);
+
+    if (isSeatedOnSofa) {
+      // Keep full body (minus head/neck in FP) visible and offset slightly back so legs/arms frame naturally
+      if (currentRenderPassMode === 'first-person') {
+        bodyGroup.visible = true;
+        bodyGroup.position.set(0, 0, -0.18);
+      }
+
+      let relYaw = params.yaw - (params.sofaBaseYaw ?? params.yaw);
+      while (relYaw > Math.PI) relYaw -= Math.PI * 2;
+      while (relYaw < -Math.PI) relYaw += Math.PI * 2;
+
+      // Pelvis & torso seated comfortably on the living room sofa cushion (`y = 0.495`)
+      pelvisPivot.position.set(0, 0.530 + breath * 0.0018, -0.02);
+      pelvisPivot.rotation.set(0, 0, 0);
+
+      torsoPivot.rotation.set(
+        -0.08 + breath * 0.008,
+        THREE.MathUtils.clamp(relYaw * 0.22, -0.26, 0.26),
+        idleShift * 0.008
+      );
+      torsoPivot.scale.set(1, 1, 1 + breath * 0.007);
+
+      for (let i = 0; i < drawstringPivots.length; i++) {
+        const side = i === 0 ? -1 : 1;
+        drawstringPivots[i].rotation.x = 0.08 + breath * 0.012;
+        drawstringPivots[i].rotation.z = side * 0.014;
+      }
+      hoodPivot.rotation.x = -0.04 + breath * 0.008;
+
+      headGroup.rotation.set(
+        THREE.MathUtils.clamp(-params.pitch * 0.48, -0.34, 0.34) + breath * 0.008,
+        THREE.MathUtils.clamp(relYaw * 0.52, -0.58, 0.58),
+        idleCuriosity * 0.018
+      );
+
+      // Seated thighs resting on cushion, shins vertical, sneakers flush on living room floor
+      leftLeg.hip.rotation.set(-1.46, 0.08, -0.04);
+      leftLeg.knee.rotation.set(1.46, 0, 0);
+      leftLeg.ankle.rotation.set(0.04, 0, 0);
+
+      rightLeg.hip.rotation.set(-1.46, -0.08, 0.04);
+      rightLeg.knee.rotation.set(1.46, 0, 0);
+      rightLeg.ankle.rotation.set(0.04, 0, 0);
+
+      // Compute smooth target arm poses across `none` (lap rest) -> `reaching` -> `holding`
+      const coPlayMode = params.coPlayMode ?? 'none';
+      const reachP = THREE.MathUtils.clamp(params.coPlayReachProgress ?? 0, 0, 1);
+      const inX = THREE.MathUtils.clamp(params.coPlayInputX ?? 0, -1, 1);
+      const inY = THREE.MathUtils.clamp(params.coPlayInputY ?? 0, -1, 1);
+      const pulse = THREE.MathUtils.clamp(params.coPlayActionPulse ?? 0, 0, 1.2);
+
+      let tLShX = -0.44 + breath * 0.012;
+      let tLShY = 0.16;
+      let tLShZ = -0.08;
+      let tLElX = -0.96 - breath * 0.015;
+      let tLWrX = -0.04;
+      let tLHandY = Math.PI * 0.44;
+      let tLCurl = 0.24 + breath * 0.02;
+
+      let tRShX = -0.44 + breath * 0.012;
+      let tRShY = -0.16;
+      let tRShZ = 0.08;
+      let tRElX = -0.96 - breath * 0.015;
+      let tRWrX = -0.04;
+      let tRHandY = -Math.PI * 0.44;
+      let tRCurl = 0.24 + breath * 0.02;
+
+      let showController = false;
+
+      if (coPlayMode === 'reaching') {
+        if (reachP < 0.54) {
+          const ext = Math.sin((reachP / 0.54) * Math.PI * 0.5);
+          // Right arm (+X -> toward heroine on left side of sofa) reaches out from hoodie sleeve
+          tRShX = THREE.MathUtils.lerp(-0.44, -1.24, ext);
+          tRShY = THREE.MathUtils.lerp(-0.16, 0.16, ext);
+          tRShZ = THREE.MathUtils.lerp(0.08, -0.04, ext);
+          tRElX = THREE.MathUtils.lerp(-0.96, -0.34, ext);
+          tRWrX = THREE.MathUtils.lerp(-0.04, -0.16, ext);
+          tRHandY = THREE.MathUtils.lerp(-Math.PI * 0.44, -Math.PI * 0.24, ext);
+          tRCurl = THREE.MathUtils.lerp(0.24, 0.06, ext);
+          // Left arm rises slightly ready to receive controller with both hands
+          tLShX = THREE.MathUtils.lerp(-0.44, -0.58, ext);
+          tLShY = THREE.MathUtils.lerp(0.16, 0.28, ext);
+          tLElX = THREE.MathUtils.lerp(-0.96, -1.22, ext);
+          tLCurl = THREE.MathUtils.lerp(0.24, 0.14, ext);
+        } else {
+          showController = true;
+          const pull = (reachP - 0.54) / 0.46;
+          const smoothPull = pull * pull * (3 - 2 * pull);
+          tRShX = THREE.MathUtils.lerp(-1.24, -0.64, smoothPull);
+          tRShY = THREE.MathUtils.lerp(0.16, -0.32, smoothPull);
+          tRShZ = THREE.MathUtils.lerp(-0.04, 0.06, smoothPull);
+          tRElX = THREE.MathUtils.lerp(-0.34, -1.34, smoothPull);
+          tRWrX = -0.16;
+          tRHandY = THREE.MathUtils.lerp(-Math.PI * 0.24, -Math.PI * 0.36, smoothPull);
+          tRCurl = THREE.MathUtils.lerp(0.12, 0.56, smoothPull);
+
+          tLShX = THREE.MathUtils.lerp(-0.58, -0.64, smoothPull);
+          tLShY = THREE.MathUtils.lerp(0.28, 0.32, smoothPull);
+          tLShZ = -0.06;
+          tLElX = THREE.MathUtils.lerp(-1.22, -1.34, smoothPull);
+          tLWrX = -0.16;
+          tLHandY = Math.PI * 0.36;
+          tLCurl = THREE.MathUtils.lerp(0.14, 0.56, smoothPull);
+        }
+      } else if (coPlayMode === 'holding') {
+        showController = true;
+        const tilt = inX * 0.07 + pulse * 0.09;
+        tLShX = -0.64 - inY * 0.025 + tilt * 0.35 + breath * 0.01;
+        tLShY = 0.32;
+        tLShZ = -0.06;
+        tLElX = -1.34 + pulse * 0.06;
+        tLWrX = -0.16 - pulse * 0.05;
+        tLHandY = Math.PI * 0.36;
+        tLCurl = 0.58;
+
+        tRShX = -0.64 - inY * 0.025 - tilt * 0.35 + breath * 0.01;
+        tRShY = -0.32;
+        tRShZ = 0.06;
+        tRElX = -1.34 + pulse * 0.06;
+        tRWrX = -0.16 - pulse * 0.05;
+        tRHandY = -Math.PI * 0.36;
+        tRCurl = 0.58;
+      }
+
+      const armDamp = 9.5;
+      lShX = THREE.MathUtils.damp(lShX, tLShX, armDamp, safeDt);
+      lShY = THREE.MathUtils.damp(lShY, tLShY, armDamp, safeDt);
+      lShZ = THREE.MathUtils.damp(lShZ, tLShZ, armDamp, safeDt);
+      lElX = THREE.MathUtils.damp(lElX, tLElX, armDamp, safeDt);
+      lWrX = THREE.MathUtils.damp(lWrX, tLWrX, armDamp, safeDt);
+      lHandY = THREE.MathUtils.damp(lHandY, tLHandY, armDamp, safeDt);
+      lCurl = THREE.MathUtils.damp(lCurl, tLCurl, armDamp, safeDt);
+
+      rShX = THREE.MathUtils.damp(rShX, tRShX, armDamp, safeDt);
+      rShY = THREE.MathUtils.damp(rShY, tRShY, armDamp, safeDt);
+      rShZ = THREE.MathUtils.damp(rShZ, tRShZ, armDamp, safeDt);
+      rElX = THREE.MathUtils.damp(rElX, tRElX, armDamp, safeDt);
+      rWrX = THREE.MathUtils.damp(rWrX, tRWrX, armDamp, safeDt);
+      rHandY = THREE.MathUtils.damp(rHandY, tRHandY, armDamp, safeDt);
+      rCurl = THREE.MathUtils.damp(rCurl, tRCurl, armDamp, safeDt);
+
+      leftArm.shoulder.rotation.set(lShX, lShY, lShZ);
+      leftArm.elbow.rotation.set(lElX, 0, 0);
+      leftArm.wrist.rotation.set(lWrX, 0, -0.04);
+      leftArm.handGroup.rotation.y = lHandY;
+      applyHandCurl(leftArm, lCurl);
+
+      rightArm.shoulder.rotation.set(rShX, rShY, rShZ);
+      rightArm.elbow.rotation.set(rElX, 0, 0);
+      rightArm.wrist.rotation.set(rWrX, 0, 0.04);
+      rightArm.handGroup.rotation.y = rHandY;
+      applyHandCurl(rightArm, rCurl);
+
+      if (showController) {
+        bodyGroup.updateMatrixWorld(true);
+        leftArm.handGroup.getWorldPosition(_padLeftPos);
+        rightArm.handGroup.getWorldPosition(_padRightPos);
+        _padMidPos.addVectors(_padLeftPos, _padRightPos).multiplyScalar(0.5);
+        bodyGroup.worldToLocal(_padMidPos);
+        seatedControllerGroup.visible = true;
+        seatedControllerGroup.position.set(
+          _padMidPos.x,
+          _padMidPos.y - 0.024,
+          _padMidPos.z + 0.030
+        );
+        seatedControllerGroup.rotation.set(
+          -0.46 + (params.coPlayInputY ?? 0) * 0.05 + (params.coPlayActionPulse ?? 0) * 0.10,
+          0,
+          -(params.coPlayInputX ?? 0) * 0.14
+        );
+      } else {
+        seatedControllerGroup.visible = false;
+      }
+      return;
+    }
+
+    // Standing / walking path: ensure seated controller stays hidden and handGroup resting yaw restored
+    seatedControllerGroup.visible = false;
+    leftArm.handGroup.rotation.y = Math.PI * 0.44;
+    rightArm.handGroup.rotation.y = -Math.PI * 0.44;
+
     // Core harmonic signals
     const sinW = Math.sin(walkPhase);
     const cosW = Math.cos(walkPhase);
     const sin2W = Math.sin(walkPhase * 2);
     const cos2W = Math.cos(walkPhase * 2);
-    const breath = Math.sin(elapsed * 1.55);
-    const idleShift = Math.sin(elapsed * 0.62);
-    const idleCuriosity = Math.sin(elapsed * 0.47 + 0.8);
 
     // 1. Pelvis: double-frequency vertical stride bounce + subtle weight shift & hip drop
     const walkBob = Math.abs(sinW) * 0.028 * moveBlend;
@@ -2028,6 +2265,7 @@ export function createProtagonist(
 
     // Keep FP body cleanly hidden during normal forward gaze; reveal smoothly when looking down or reaching
     if (currentRenderPassMode === 'first-person') {
+      bodyGroup.position.set(0, 0, -0.20);
       bodyGroup.visible = lastPitch <= -0.58 || reachTimer > 0.01;
     }
 
@@ -2111,17 +2349,18 @@ export function createProtagonist(
       0.04
     );
 
+    // Sync seated arm targets smoothly to relaxed idle so sitting down is always seamless
+    lShX = -0.44;
+    lShY = 0.16;
+    lShZ = -0.08;
+    lElX = -0.96;
+    rShX = -0.44;
+    rShY = -0.16;
+    rShZ = 0.08;
+    rElX = -0.96;
+
     // Relaxed natural anime finger curl (softens open during reach!)
     const baseCurl = (0.24 + breath * 0.028) * (1 - reachCurve * 0.72);
-    const applyHandCurl = (arm: ArmRig, curl: number) => {
-      for (let fi = 0; fi < arm.fingers.length; fi++) {
-        const cascade = 0.82 + fi * 0.12;
-        arm.fingers[fi].base.rotation.x = curl * 0.75 * cascade;
-        arm.fingers[fi].mid.rotation.x = curl * 1.08 * cascade;
-        arm.fingers[fi].tip.rotation.x = curl * 0.65 * cascade;
-      }
-      arm.thumb.tip.rotation.x = curl * 0.45;
-    };
     applyHandCurl(leftArm, 0.24 + breath * 0.025);
     applyHandCurl(rightArm, baseCurl);
   };
