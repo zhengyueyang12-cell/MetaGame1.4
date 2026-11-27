@@ -618,10 +618,47 @@ export function createSplayedLegMesh(
   return mesh;
 }
 
+const CURTAIN_HEM_V = 0.038;
+
+/**
+ * Remaps the bottom 5 vertex rows of a curtain PlaneGeometry into a crisp,
+ * physically sculpted double-folded stitched hem (`v = 0 .. CURTAIN_HEM_V`),
+ * returning the remapped `v` coordinate and out-of-plane Z relief (indented
+ * stitch seam at `v = hemV`, proud double-layer folded band below, and soft
+ * rounded bottom fold lip at `v = 0`).
+ */
+function sampleCurtainFoldedHem(
+  rowIndex: number,
+  segY: number,
+  u: number,
+  hemV = CURTAIN_HEM_V
+): { v: number; reliefZ: number } {
+  const bodyRows = segY - 5;
+  if (rowIndex <= bodyRows) {
+    const t = rowIndex / bodyRows;
+    const v = 1.0 - t * (1.0 - (hemV + 0.008));
+    return { v, reliefZ: 0 };
+  }
+  const hemStep = rowIndex - bodyRows; // 1..5
+  const stitchPucker = Math.sin(u * Math.PI * 34) * 0.0007;
+  switch (hemStep) {
+    case 1: // Slight tuck-in immediately above the stitch line
+      return { v: hemV + 0.0025, reliefZ: -0.0018 };
+    case 2: // Indented horizontal stitch groove with subtle needle pucker
+      return { v: hemV, reliefZ: -0.0046 + stitchPucker };
+    case 3: // Upper ridge of the double-folded hem stepping outward
+      return { v: hemV - 0.0045, reliefZ: 0.0078 + stitchPucker * 0.5 };
+    case 4: // Weighted flat double-layer hem face
+      return { v: hemV * 0.44, reliefZ: 0.0086 };
+    default: // Softly rounded folded bottom edge
+      return { v: 0.0, reliefZ: 0.0026 };
+  }
+}
+
 /**
  * Creates a continuous wavy fabric curtain mesh with realistic French pinch-pleats
  * at the top header, natural inward waist gathering at the tieback band, and a
- * softly flared multi-fold bottom hem.
+ * softly flared multi-fold bottom hem with a stitched double-folded cuff.
  */
 export function createDrapedCurtainGeometry(
   width: number,
@@ -630,15 +667,18 @@ export function createDrapedCurtainGeometry(
   pleatCount = 5.5
 ): THREE.BufferGeometry {
   const segX = 48;
-  const segY = 36;
+  const segY = 40;
   const geo = new THREE.PlaneGeometry(width, height, segX, segY);
   const pos = geo.attributes.position;
+  const uv = geo.attributes.uv;
 
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
-    const y = pos.getY(i);
     const u = THREE.MathUtils.clamp((x + width / 2) / width, 0, 1); // 0..1 across curtain width
-    const v = THREE.MathUtils.clamp((y + height / 2) / height, 0, 1); // 0 (bottom hem) .. 1 (top header)
+    const rowIndex = Math.floor(i / (segX + 1));
+    const { v, reliefZ } = sampleCurtainFoldedHem(rowIndex, segY, u);
+    const y = (v - 0.5) * height;
+    uv.setY(i, v);
 
     // Tieback waist gather centered around v = 0.365 (matches tieBand at y = -0.34)
     const tieDist = (v - 0.365) / 0.22;
@@ -673,11 +713,217 @@ export function createDrapedCurtainGeometry(
       i,
       sculptedX,
       y + hemWaveY,
-      primaryWave + pinchHarmonic + organicRipple + waistBillow
+      primaryWave + pinchHarmonic + organicRipple + waistBillow + reliefZ
     );
   }
 
   pos.needsUpdate = true;
+  uv.needsUpdate = true;
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * Creates a classic "butterfly" (hourglass tieback) curtain panel:
+ * fixed full-width pleated header at the top (v = 1), tightly cinched
+ * into an hourglass waist in the lower third (v = pinchV), and gracefully
+ * flaring outward into a ruffled butterfly skirt with a folded stitched bottom hem.
+ */
+export function createButterflyCurtainGeometry(
+  width: number,
+  height: number,
+  depth = 0.082,
+  pleatCount = 6.5,
+  pinchV = 0.28
+): THREE.BufferGeometry {
+  const segX = 52;
+  const segY = 48;
+  const geo = new THREE.PlaneGeometry(width, height, segX, segY);
+  const pos = geo.attributes.position;
+  const uv = geo.attributes.uv;
+
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const u = THREE.MathUtils.clamp((x + width / 2) / width, 0, 1);
+    const rowIndex = Math.floor(i / (segX + 1));
+    const { v, reliefZ } = sampleCurtainFoldedHem(rowIndex, segY, u);
+    const y = (v - 0.5) * height;
+    uv.setY(i, v);
+
+    // Asymmetric hourglass gather: smooth sweeping taper from top rod down to lower-third waist,
+    // followed by a lively outward butterfly flare at the bottom skirt
+    const sigma = v > pinchV ? 0.34 : 0.19;
+    const tieDist = (v - pinchV) / sigma;
+    const tiePinch = Math.exp(-tieDist * tieDist);
+
+    const lowerRatio = Math.max(0, (pinchV - v) / Math.max(0.01, pinchV));
+    const bottomFlare = Math.pow(lowerRatio, 1.3) * 0.22;
+    const topAnchor = Math.pow(v, 3.2) * 0.06;
+
+    const widthScale = THREE.MathUtils.clamp(
+      1.0 - tiePinch * 0.72 + bottomFlare + topAnchor,
+      0.22,
+      1.18
+    );
+
+    const sculptedX = x * widthScale;
+
+    // Fine vertical pinch-pleats that bunch radially around the cinched waist
+    const headerPinch = Math.pow(v, 2.4);
+    const phase = u * Math.PI * 2 * pleatCount;
+    const pleatEnv = depth * (0.58 + 0.42 * (1 - v) - 0.38 * tiePinch);
+    const primaryWave = Math.sin(phase) * pleatEnv;
+    const pinchHarmonic =
+      Math.cos(phase * 2.0) * depth * (0.14 + 0.20 * headerPinch);
+    const organicRipple =
+      Math.sin(u * Math.PI * 3.0 + v * 4.5) * depth * 0.10 * (1 - 0.45 * v);
+
+    // Sculpted cylindrical bunching at the tieback waist + soft fabric puff right above & below
+    const centerBell = Math.cos((u - 0.5) * Math.PI);
+    const waistBundle = tiePinch * depth * 0.48 * centerBell;
+    const skirtBillow = lowerRatio * (1 - lowerRatio * 0.35) * depth * 0.28 * centerBell;
+
+    // Gentle weighted scallop along the flared bottom hem
+    const hemWaveY =
+      Math.pow(1 - v, 2.0) * (Math.sin(phase) * 0.012 - Math.abs(u - 0.5) * 0.022);
+
+    pos.setXYZ(
+      i,
+      sculptedX,
+      y + hemWaveY,
+      primaryWave + pinchHarmonic + organicRipple + waistBundle + skirtBillow + reliefZ
+    );
+  }
+
+  pos.needsUpdate = true;
+  uv.needsUpdate = true;
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * Creates a gracefully flared top curtain valance (窗幔):
+ * fixed snugly at the top rod (v = 1) with ZERO inward pinch,
+ * fanning softly outward and slightly forward toward the bottom lace hem (v = 0).
+ */
+export function createFlaredValanceGeometry(
+  width: number,
+  height: number,
+  depth = 0.046,
+  pleatCount = 13.0
+): THREE.BufferGeometry {
+  const segX = 64;
+  const segY = 20;
+  const geo = new THREE.PlaneGeometry(width, height, segX, segY);
+  const pos = geo.attributes.position;
+
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const u = THREE.MathUtils.clamp((x + width / 2) / width, 0, 1);
+    const v = THREE.MathUtils.clamp((y + height / 2) / height, 0, 1);
+
+    // Outward flare from top rod (v=1) to bottom lace hem (v=0) — never pinches inward!
+    const drop = 1 - v;
+    const widthScale = 1.0 + Math.pow(drop, 1.3) * 0.095;
+    const sculptedX = x * widthScale;
+
+    // Soft rhythmic ruffle pleats that deepen and billow gently outward toward the bottom hem
+    const phase = u * Math.PI * 2 * pleatCount;
+    const pleatAmp = depth * (0.28 + 0.85 * Math.pow(drop, 0.85));
+    const primaryWave = Math.sin(phase) * pleatAmp;
+    const harmonic = Math.cos(phase * 2.0) * depth * 0.14 * (0.4 + 0.6 * drop);
+    const forwardFlare = Math.pow(drop, 1.15) * 0.042;
+    const hemWaveY = drop * drop * Math.sin(phase) * 0.008;
+
+    pos.setXYZ(i, sculptedX, y + hemWaveY, primaryWave + harmonic + forwardFlare);
+  }
+
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * Creates one half (`side`: -1 or +1) of a physically natural gravity-draped velvet curtain pair:
+ * - Top header (v = 1) is fixed along the rod from window center (x = 0) to outer edge (halfWidth)
+ * - Upper inner edge hangs under gravity in a natural concave catenary swag down to the side tieback
+ * - Outer edge hangs naturally straight down, gently gathered into the tieback band
+ * - Below the tieback (v < pinchV), the released fabric hangs vertically under gravity with soft pleats
+ */
+export function createArchedVelvetCurtainGeometry(
+  halfWidth: number,
+  height: number,
+  side: -1 | 1,
+  depth = 0.072,
+  pleatCount = 6.5,
+  pinchV = 0.34
+): THREE.BufferGeometry {
+  const segX = 56;
+  const segY = 56;
+  const geo = new THREE.PlaneGeometry(halfWidth, height, segX, segY);
+  const pos = geo.attributes.position;
+  const uv = geo.attributes.uv;
+
+  const tieInner = halfWidth * 0.60; // ~0.53m from center at tieback waist
+
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const u = THREE.MathUtils.clamp((x + halfWidth / 2) / halfWidth, 0, 1);
+    const rowIndex = Math.floor(i / (segX + 1));
+    const { v, reliefZ } = sampleCurtainFoldedHem(rowIndex, segY, u);
+    const y = (v - 0.5) * height;
+    uv.setY(i, v);
+
+    // s = 0 at the inner (window-center) edge, s = 1 at the outer wall edge
+    const s = side === 1 ? u : 1 - u;
+
+    // 1. Physically natural gravity catenary drape for the inner edge:
+    //    Fixed at center (x = 0) at the rod (v = 1), falling smoothly under gravity toward the
+    //    side tieback (v = pinchV), then hanging naturally straight down with slight soft relaxation.
+    let innerDist: number;
+    if (v >= pinchV) {
+      const t = (1 - v) / Math.max(0.01, 1 - pinchV); // 0 at top rod -> 1 at tieback
+      // Natural downward gravity swag (concave toward the floor, never bulging outward!)
+      const gravityCurve = Math.pow(t, 1.55);
+      // Smooth slight ease into the tieback ring so there is no sharp kink at v = pinchV
+      const smoothTie = t * t * (3 - 2 * t);
+      innerDist = tieInner * (0.65 * gravityCurve + 0.35 * smoothTie);
+    } else {
+      // Below the tieback: fabric hangs straight down under gravity, relaxing gently outward
+      const belowT = (pinchV - v) / Math.max(0.01, pinchV); // 0 at tieback -> 1 at floor hem
+      innerDist = tieInner - halfWidth * 0.075 * (1 - Math.exp(-belowT * 3.0));
+    }
+
+    // 2. Outer edge hangs naturally vertical along the wall, gently pulled in at the tieback
+    const waistDist = (v - pinchV) / (v > pinchV ? 0.24 : 0.16);
+    const waistPinch = Math.exp(-waistDist * waistDist);
+    const outerDist = halfWidth * (0.98 - waistPinch * 0.14);
+
+    const radialX = THREE.MathUtils.lerp(innerDist, outerDist, s);
+    const sculptedX = side * radialX;
+
+    // 3. Soft, natural rounded velvet folds flowing along the drape
+    const phase = s * Math.PI * 2 * pleatCount;
+    const pleatEnv = depth * (0.58 + 0.32 * (1 - v) - 0.28 * waistPinch);
+    const primaryWave = Math.sin(phase) * pleatEnv;
+    const softVelvetRound = Math.cos(phase * 2.0) * depth * 0.10;
+    // Gentle natural bunching depth at the tieback bundle (never protruding awkwardly)
+    const tieBundle = Math.sin(s * Math.PI) * depth * (0.18 + 0.32 * waistPinch);
+
+    // Subtle weighted hem undulation at the bottom
+    const hemWaveY = Math.pow(1 - v, 2.2) * Math.sin(phase) * 0.008;
+
+    pos.setXYZ(
+      i,
+      sculptedX,
+      y + hemWaveY,
+      primaryWave + softVelvetRound + tieBundle + reliefZ
+    );
+  }
+
+  pos.needsUpdate = true;
+  uv.needsUpdate = true;
   geo.computeVertexNormals();
   return geo;
 }

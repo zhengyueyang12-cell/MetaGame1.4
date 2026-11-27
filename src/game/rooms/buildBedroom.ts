@@ -9,6 +9,7 @@ import {
   createTurnedLegGeometry,
 } from '../geometries';
 import { mergeStaticGroupToSingleMesh } from '../SceneManager';
+import { apartmentColorStudio } from '../devColorStudio';
 import { createErgonomicSwivelChair } from '../entities/buildErgonomicChair';
 import {
   createTabletopPenSet,
@@ -52,7 +53,7 @@ function finalizeInstancedMesh(instMesh: THREE.InstancedMesh): void {
 }
 
 /**
- * Generates a crisp procedural circular rosy-pink MiSide rug texture with a cream border ring.
+ * Generates a crisp procedural circular French botanical sage-green medallion rug texture with cream lace ring.
  */
 function createCircularPinkRugTexture(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
@@ -62,16 +63,16 @@ function createCircularPinkRugTexture(): THREE.CanvasTexture {
   const cx = 256;
   const cy = 256;
 
-  // Soft rosy-pink woven base
+  // Soft French sage-celadon woven base
   const grad = ctx.createRadialGradient(cx, cy, 18, cx, cy, 250);
-  grad.addColorStop(0.0, '#f388a5');
-  grad.addColorStop(0.76, '#ec7697');
-  grad.addColorStop(1.0, '#df6889');
+  grad.addColorStop(0.0, '#bfd4ba');
+  grad.addColorStop(0.76, '#a5bfa0');
+  grad.addColorStop(1.0, '#8faa8b');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 512, 512);
 
-  // Subtle concentric weave texture
-  ctx.strokeStyle = 'rgba(255, 240, 245, 0.09)';
+  // Subtle concentric French wool weave texture
+  ctx.strokeStyle = 'rgba(252, 250, 242, 0.14)';
   ctx.lineWidth = 1.5;
   for (let r = 24; r < 245; r += 9) {
     ctx.beginPath();
@@ -79,18 +80,37 @@ function createCircularPinkRugTexture(): THREE.CanvasTexture {
     ctx.stroke();
   }
 
-  // Signature MiSide cream ring border near the perimeter (Screenshot 2)
-  ctx.strokeStyle = '#fdebf0';
+  // Ornate French cream-ivory double ring border & scalloped botanical inner wreath
+  ctx.strokeStyle = '#faf6ea';
   ctx.lineWidth = 12;
   ctx.beginPath();
   ctx.arc(cx, cy, 224, 0, Math.PI * 2);
   ctx.stroke();
 
-  ctx.strokeStyle = 'rgba(220, 108, 140, 0.28)';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(104, 134, 100, 0.36)';
+  ctx.lineWidth = 2.2;
   ctx.beginPath();
-  ctx.arc(cx, cy, 215, 0, Math.PI * 2);
+  ctx.arc(cx, cy, 214, 0, Math.PI * 2);
   ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(250, 246, 234, 0.65)';
+  ctx.lineWidth = 3.5;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 168, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Delicate French floral rosette medallion at center
+  ctx.fillStyle = 'rgba(250, 246, 234, 0.72)';
+  for (let p = 0; p < 8; p++) {
+    const a = (p / 8) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.ellipse(cx + Math.cos(a) * 34, cy + Math.sin(a) * 34, 22, 10, a, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#e6d39a';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+  ctx.fill();
 
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -99,7 +119,7 @@ function createCircularPinkRugTexture(): THREE.CanvasTexture {
 }
 
 /**
- * Generates a cute pastel framed wall print texture (hearts / anime character art / pastel sky).
+ * Generates French pastoral sage-green & cream framed wall prints.
  */
 function createPastelArtTexture(variant: 'girl' | 'heart' | 'clouds'): THREE.CanvasTexture {
   const c = document.createElement('canvas');
@@ -109,51 +129,62 @@ function createPastelArtTexture(variant: 'girl' | 'heart' | 'clouds'): THREE.Can
 
   if (variant === 'girl') {
     const bg = ctx.createLinearGradient(0, 0, 0, 320);
-    bg.addColorStop(0, '#ffe3ee');
-    bg.addColorStop(1, '#f4d9f7');
+    bg.addColorStop(0, '#eef5ea');
+    bg.addColorStop(1, '#dcead6');
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, 256, 320);
-    // Stylized pastel anime ribbon & silhouette
-    ctx.fillStyle = '#5367b5';
+    // French botanical olive wreath & cream ribbon
+    ctx.strokeStyle = '#6f926c';
+    ctx.lineWidth = 5;
     ctx.beginPath();
-    ctx.arc(128, 128, 48, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffe5dc';
+    ctx.arc(128, 160, 74, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = '#89ad84';
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      ctx.save();
+      ctx.translate(128 + Math.cos(a) * 74, 160 + Math.sin(a) * 74);
+      ctx.rotate(a + 0.5);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 14, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.fillStyle = '#d9be76';
     ctx.beginPath();
-    ctx.arc(128, 134, 34, 0, Math.PI * 2);
+    ctx.arc(128, 160, 14, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#e35578';
-    ctx.beginPath();
-    ctx.moveTo(86, 240);
-    ctx.lineTo(170, 240);
-    ctx.lineTo(154, 174);
-    ctx.lineTo(102, 174);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#4e6ec2';
-    ctx.fillRect(82, 238, 92, 42);
   } else if (variant === 'heart') {
     const bg = ctx.createLinearGradient(0, 0, 256, 320);
-    bg.addColorStop(0, '#ffdbe7');
-    bg.addColorStop(1, '#fbe8f4');
+    bg.addColorStop(0, '#f4f8ee');
+    bg.addColorStop(1, '#e1eedc');
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, 256, 320);
-    ctx.fillStyle = '#ef7092';
+    // French pastoral vase with sage eucalyptus stems
+    ctx.fillStyle = '#fcf9ef';
     ctx.beginPath();
-    ctx.moveTo(128, 224);
-    ctx.bezierCurveTo(64, 176, 48, 112, 92, 92);
-    ctx.bezierCurveTo(116, 82, 128, 108, 128, 118);
-    ctx.bezierCurveTo(128, 108, 140, 82, 164, 92);
-    ctx.bezierCurveTo(208, 112, 192, 176, 128, 224);
+    ctx.ellipse(128, 224, 34, 42, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = '#6d916a';
+    ctx.lineWidth = 4;
+    for (const dx of [-28, 0, 28]) {
+      ctx.beginPath();
+      ctx.moveTo(128, 188);
+      ctx.quadraticCurveTo(128 + dx * 0.6, 130, 128 + dx, 84);
+      ctx.stroke();
+      ctx.fillStyle = '#86ab82';
+      ctx.beginPath();
+      ctx.ellipse(128 + dx, 84, 14, 8, dx * 0.02, 0, Math.PI * 2);
+      ctx.fill();
+    }
   } else {
     const bg = ctx.createLinearGradient(0, 0, 0, 320);
-    bg.addColorStop(0, '#c8dffb');
-    bg.addColorStop(0.65, '#fbd8e8');
-    bg.addColorStop(1, '#fff0d8');
+    bg.addColorStop(0, '#d8ead9');
+    bg.addColorStop(0.62, '#eef5e8');
+    bg.addColorStop(1, '#f8f4e2');
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, 256, 320);
-    ctx.fillStyle = 'rgba(255,255,255,0.88)';
+    ctx.fillStyle = 'rgba(255,253,246,0.90)';
     for (const [x, y, r] of [
       [78, 145, 28],
       [106, 138, 34],
@@ -196,24 +227,24 @@ export function buildBedroom(ctx: RoomBuildContext, playDoorAudio: (open: boolea
   sceneManager.registerRoomGroup('bedroom', group);
 
   // =========================================================================
-  // MISIDE BEDROOM PALETTE: Crisp Creamy-White + Pastel Pink + Sky Blue + Honey Oak Door
+  // FRENCH GREEN BEDROOM PALETTE: Antique Cream-Ivory + Sage-Pistachio + Dusty Olive + Champagne Brass
   // =========================================================================
   const whiteFurnMat = mat({
-    color: 0xfbf6f6,
+    color: 0xfaf7ef,
     roughness: 0.50,
     metalness: 0.02,
     woodLacquer: 0.56,
     celStrength: 0.50,
   });
   const whiteTrimMat = mat({
-    color: 0xf6eaee,
+    color: 0xeeeae0,
     roughness: 0.54,
     metalness: 0.02,
     woodLacquer: 0.52,
     celStrength: 0.50,
   });
   const pastelPinkMat = mat({
-    color: 0xf7b2c6,
+    color: 0xb7cfb4,
     roughness: 0.52,
     metalness: 0.02,
     woodLacquer: 0.48,
@@ -223,26 +254,26 @@ export function buildBedroom(ctx: RoomBuildContext, playDoorAudio: (open: boolea
     map: textures.plushFabric,
     bumpMap: textures.plushBump,
     bumpScale: 0.012,
-    color: 0xfac8d7,
+    color: 0xc9dec6,
     roughness: 0.92,
     metalness: 0.0,
     celStrength: 0.36,
   });
   const rosyPinkMat = mat({
-    color: 0xef85a3,
+    color: 0x7e9f7c,
     roughness: 0.56,
     metalness: 0.02,
     woodLacquer: 0.44,
     celStrength: 0.50,
   });
   const skyBlueMat = mat({
-    color: 0x779ce2,
+    color: 0x769a8d,
     roughness: 0.56,
     metalness: 0.04,
     celStrength: 0.50,
   });
   const softBlueFabricMat = mat({
-    color: 0x5c84d6,
+    color: 0x5f8578,
     roughness: 0.85,
     metalness: 0.0,
     celStrength: 0.45,
@@ -251,22 +282,22 @@ export function buildBedroom(ctx: RoomBuildContext, playDoorAudio: (open: boolea
   const doorMat = mat({
     map: textures.furnitureOak,
     bumpMap: textures.furnitureWoodBump,
-    bumpScale: 0.005,
-    color: 0xfff6e6,
-    roughness: 0.58,
+    bumpScale: 0.004,
+    color: 0xffffff,
+    roughness: 0.60,
     metalness: 0.0,
-    woodLacquer: 0.52,
+    woodLacquer: 0.42,
   });
-  const silverMetalMat = mat({ color: 0xd4cedc, roughness: 0.28, metalness: 0.65 });
-  const darkMetalMat = mat({ color: 0x453d54, roughness: 0.38, metalness: 0.62 });
-  const brassMat = mat({ color: 0xd9b168, roughness: 0.30, metalness: 0.75 });
+  const silverMetalMat = mat({ color: 0xd8c8a0, roughness: 0.30, metalness: 0.65 });
+  const darkMetalMat = mat({ color: 0x424a44, roughness: 0.38, metalness: 0.62 });
+  const brassMat = mat({ color: 0xd9b46c, roughness: 0.30, metalness: 0.75 });
 
-  // Crisp snowy-white duvet & soft blush-pink bedding (Screenshots 2 & 3)
+  // Crisp French ivory duvet & soft sage-green bedding
   const duvetMat = mat({
     map: textures.plushFabric,
     bumpMap: textures.plushBump,
     bumpScale: 0.016,
-    color: 0xfff8fa,
+    color: 0xfcfaf4,
     roughness: 0.92,
     metalness: 0.0,
     celStrength: 0.32,
@@ -275,7 +306,7 @@ export function buildBedroom(ctx: RoomBuildContext, playDoorAudio: (open: boolea
     map: textures.plushFabric,
     bumpMap: textures.plushBump,
     bumpScale: 0.012,
-    color: 0xfffafc,
+    color: 0xf7f5ed,
     roughness: 0.91,
     metalness: 0.0,
     celStrength: 0.32,
@@ -284,15 +315,14 @@ export function buildBedroom(ctx: RoomBuildContext, playDoorAudio: (open: boolea
     map: textures.plushFabric,
     bumpMap: textures.plushBump,
     bumpScale: 0.015,
-    color: 0xf7b8ca,
+    color: 0xa2be9e,
     roughness: 0.93,
     metalness: 0.0,
     celStrength: 0.34,
   });
 
   // =========================================================================
-  // 0. FLOOR RUGS: LARGE CIRCULAR ROSY-PINK RUG + SOFT BLUSH BED RUNNER RUG
-  //    (Exact match to MiSide Screenshot 2!)
+  // 0. FLOOR RUGS: FRENCH BOTANICAL SAGE MEDALLION RUG + SOFT CREAM-SAGE BED RUNNER RUG
   // =========================================================================
   const pinkRugTex = createCircularPinkRugTexture();
   const circleRug = new THREE.Mesh(
@@ -312,12 +342,12 @@ export function buildBedroom(ctx: RoomBuildContext, playDoorAudio: (open: boolea
   outlines.addOutline(circleRug, 1.008);
   group.add(circleRug);
 
-  // Soft blush-ivory rectangular rug beneath the bed & foot-of-bed bench
+  // Soft cream-sage rectangular rug beneath the bed & foot-of-bed bench
   const bedRug = new THREE.Mesh(
     createBeveledSlab(2.85, 0.014, 2.55, 0.24, 0.004),
     mat({
       map: textures.plushFabric,
-      color: 0xfae5ec,
+      color: 0xe6efe2,
       roughness: 0.95,
       metalness: 0.0,
       celStrength: 0.32,
@@ -2034,6 +2064,31 @@ export function buildBedroom(ctx: RoomBuildContext, playDoorAudio: (open: boolea
     starPoints.userData.dynamic = true;
     group.add(starPoints);
   }
+
+  // Register Bedroom shared materials into Global Persistent Color Studio (F8)
+  apartmentColorStudio.registerMaterialColor('bedFurnWhite', '卧室法式奶白家具', 'bedroom', [
+    whiteFurnMat,
+    whiteTrimMat,
+  ]);
+  apartmentColorStudio.registerMaterialColor('bedPinkAccent', '卧室法式鼠尾草绿饰面', 'bedroom', [
+    pastelPinkMat,
+    rosyPinkMat,
+  ]);
+  apartmentColorStudio.registerMaterialColor('bedBlueAccent', '卧室法式青黛绿饰面', 'bedroom', [
+    skyBlueMat,
+    softBlueFabricMat,
+  ]);
+  apartmentColorStudio.registerMaterialColor('bedBedding', '卧室床品/被褥', 'bedroom', [
+    duvetMat,
+    sheetMat,
+  ]);
+  apartmentColorStudio.registerMaterialColor('bedPinkFabric', '卧室绿系布艺/地毯', 'bedroom', [
+    softPinkFabricMat,
+    pinkThrowMat,
+    circleRug.material as THREE.MeshStandardMaterial,
+    bedRug.material as THREE.MeshStandardMaterial,
+  ]);
+  apartmentColorStudio.registerMaterialColor('doorLeaf', '门扇颜色', 'global', doorMat);
 
   // Merge all static Bedroom meshes into a single draw call
   mergeStaticGroupToSingleMesh(group, outlines, 'BedroomMergedStaticMesh');

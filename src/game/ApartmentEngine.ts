@@ -735,7 +735,7 @@ export class ApartmentEngine {
     this.camera.rotation.order = 'YXZ';
     this.scene.add(this.camera);
 
-    const mirrorRes = this.isSoftwareGl ? 160 : 256;
+    const mirrorRes = this.isSoftwareGl ? 256 : 512;
     this.mirrorRenderTarget = new THREE.WebGLRenderTarget(mirrorRes, mirrorRes, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
@@ -743,7 +743,8 @@ export class ApartmentEngine {
       type: THREE.UnsignedByteType,
       stencilBuffer: false,
     });
-    this.mirrorCamera = new THREE.PerspectiveCamera(62, width / height, 0.08, 45);
+    this.mirrorRenderTarget.texture.anisotropy = Math.min(4, this.renderer.capabilities.getMaxAnisotropy());
+    this.mirrorCamera = new THREE.PerspectiveCamera(62, width / height, 0.08, 16);
 
     // Soft hotspot-free twilight dome environment (eliminates phantom studio point-light reflections)
     const pmrem = new THREE.PMREMGenerator(this.renderer);
@@ -1004,18 +1005,18 @@ export class ApartmentEngine {
     this.sunLight.target.position.set(2.8, 0.0, -4.8);
     this.scene.add(this.sunLight.target);
     this.sunLight.castShadow = true;
-    // 1024x1024 paired with fast 4-tap rotated Vogel-disk PCF & soft radius (4.6) delivers smooth grounded shadows at 4x shadow speed
-    this.sunLight.shadow.mapSize.set(1024, 1024);
+    // 2048x2048 shadow map for crisp, grounded architectural & furniture sunlight shadows across all rooms
+    this.sunLight.shadow.mapSize.set(2048, 2048);
     this.sunLight.shadow.camera.near = 1.0;
     this.sunLight.shadow.camera.far = 38.0;
     this.sunLight.shadow.camera.left = -13.5;
     this.sunLight.shadow.camera.right = 13.5;
     this.sunLight.shadow.camera.top = 13.5;
     this.sunLight.shadow.camera.bottom = -13.5;
-    this.sunLight.shadow.bias = -0.00042;
-    this.sunLight.shadow.normalBias = 0.024;
-    this.sunLight.shadow.radius = 4.6;
-    this.sunLight.shadow.intensity = 0.44;
+    this.sunLight.shadow.bias = -0.00034;
+    this.sunLight.shadow.normalBias = 0.020;
+    this.sunLight.shadow.radius = 5.0;
+    this.sunLight.shadow.intensity = 0.76;
     this.scene.add(this.sunLight);
 
     // Secondary directional graze light kept disabled (intensity folded into primary sunLight to cut per-pixel directional cost in half!)
@@ -2417,16 +2418,15 @@ export class ApartmentEngine {
       mirror.material.uniforms.uGlitchIntensity.value =
         metaBase + proxGlitch + burstGlitch + 0.04 * Math.sin(elapsed * 2.7);
 
-      // Skip redundant offscreen mirror redraws when camera & atmosphere are stationary (eliminates periodic mirror spikes!)
+      // Always update visible mirror every frame so protagonist & heroine animations stay 100% 60-FPS-synced!
+      // (When player is far away > 4.2m and completely stationary, throttle to every other frame to save GPU.)
       const camMoved =
-        this.camera.position.distanceToSquared(this.lastMirrorCamPos) > 0.000016 ||
-        Math.abs(this.yaw - this.lastMirrorCamYaw) > 0.003 ||
-        Math.abs(this.pitch - this.lastMirrorCamPitch) > 0.003 ||
+        this.camera.position.distanceToSquared(this.lastMirrorCamPos) > 0.000004 ||
+        Math.abs(this.yaw - this.lastMirrorCamYaw) > 0.001 ||
+        Math.abs(this.pitch - this.lastMirrorCamPitch) > 0.001 ||
         this.lastMirrorAtmo !== this.atmosphere;
-      if (this.mirrorVisibleLastFrame && mirror.glitchBurstTimer <= 0) {
-        if (!camMoved || (this.mirrorFrameCounter & 3) !== 0) {
-          continue;
-        }
+      if (this.mirrorVisibleLastFrame && totalDist > 4.2 && !camMoved && (this.mirrorFrameCounter & 1) !== 0) {
+        continue;
       }
       this.lastMirrorCamPos.copy(this.camera.position);
       this.lastMirrorCamYaw = this.yaw;
@@ -2455,7 +2455,7 @@ export class ApartmentEngine {
       this.mirrorCamera.fov = this.camera.fov;
       this.mirrorCamera.aspect = this.camera.aspect;
       this.mirrorCamera.near = this.camera.near;
-      this.mirrorCamera.far = 28.0;
+      this.mirrorCamera.far = 14.0;
       this.mirrorCamera.position.copy(_reflPos);
       this.mirrorCamera.up.copy(_reflUp);
       _reflTarget.copy(_reflPos).add(_reflDir);
@@ -2494,8 +2494,8 @@ export class ApartmentEngine {
         }
       }
 
-      // 3. Swap particle systems & hide ink outlines during low-res mirror pass (cuts mirror draw calls in half!)
-      //    Enable full protagonist head + hoodie + 5-fingered hands in planar mirror reflections!
+      // 3. Isolate ONLY the mirror's room + adjacent doorway room & skip heavy shadow/outline/ray passes
+      //    (cuts mirror draw calls by ~75% so 512x512 @ 60fps runs smoothly with zero frame drops!)
       const prevOutlinesEnabled = this.outlines.enabled;
       if (prevOutlinesEnabled) this.outlines.setVisible(false);
       const prevHeldVis = this.heldItemAnchor.visible;
@@ -2503,6 +2503,24 @@ export class ApartmentEngine {
       mirror.mesh.visible = false;
       this.dustPoints.visible = false;
       this.ghostDustPoints.visible = this.settings.volumetricRays;
+
+      const roomGroups = this.ctx.sceneManager.getRoomGroups();
+      const savedRoomVis: [THREE.Group, boolean][] = [];
+      const allowedNeighbor = mirror.room === 'bathroom' ? 'living' : mirror.room === 'entryway' ? 'dining' : null;
+      for (const [rId, rGrp] of roomGroups.entries()) {
+        if (rId !== mirror.room && rId !== allowedNeighbor && rGrp.visible) {
+          savedRoomVis.push([rGrp, true]);
+          rGrp.visible = false;
+        }
+      }
+      const savedRaysVis: [THREE.Object3D, boolean][] = [];
+      for (const ray of this.ctx.volumetricRays) {
+        if (ray.visible) {
+          savedRaysVis.push([ray, true]);
+          ray.visible = false;
+        }
+      }
+
       this.protagonist?.setRenderPassMode('mirror');
       this.vrmAvatar?.setRenderPassMode('mirror');
       if (silhouette) {
@@ -2510,13 +2528,18 @@ export class ApartmentEngine {
           prevSilhouetteVis || mirror.glitchBurstTimer > 0 || totalDist < 3.6;
       }
 
+      const prevShadowEnabled = this.renderer.shadowMap.enabled;
+      this.renderer.shadowMap.enabled = false;
       const prevTarget = this.renderer.getRenderTarget();
       this.renderer.setRenderTarget(this.mirrorRenderTarget);
       this.renderer.clear();
       this.renderer.render(this.scene, this.mirrorCamera);
       this.renderer.setRenderTarget(prevTarget);
+      this.renderer.shadowMap.enabled = prevShadowEnabled;
 
       // 4. Restore visibility for the main room pass
+      for (const [rGrp, v] of savedRoomVis) rGrp.visible = v;
+      for (const [ray, v] of savedRaysVis) ray.visible = v;
       mirror.mesh.visible = true;
       this.heldItemAnchor.visible = prevHeldVis;
       if (prevOutlinesEnabled) this.outlines.setVisible(true);
@@ -2536,7 +2559,7 @@ export class ApartmentEngine {
 
   private bindEvents(): void {
     window.addEventListener('resize', this.onResize);
-    window.addEventListener('keydown', this.onKeyDown);
+    window.addEventListener('keydown', this.onKeyDown, true);
     window.addEventListener('keyup', this.onKeyUp);
     document.addEventListener('pointerlockchange', this.onPointerLockChange);
 
@@ -2577,6 +2600,31 @@ export class ApartmentEngine {
 
   private onKeyDown = (e: KeyboardEvent): void => {
     if (this.inputSuspended || this.glitchCutscene) return;
+    // Prevent Shift+D / Shift+WASD sprinting from triggering browser or extension box-select/debug overlays!
+    if (
+      this.viewMode === 'first-person' &&
+      this.pcFocusState === 'none' &&
+      !(document.activeElement instanceof HTMLInputElement) &&
+      !(document.activeElement instanceof HTMLTextAreaElement)
+    ) {
+      if (
+        e.code === 'KeyW' ||
+        e.code === 'KeyA' ||
+        e.code === 'KeyS' ||
+        e.code === 'KeyD' ||
+        e.code === 'ShiftLeft' ||
+        e.code === 'ShiftRight' ||
+        e.code === 'Space' ||
+        e.code === 'ArrowUp' ||
+        e.code === 'ArrowDown' ||
+        e.code === 'ArrowLeft' ||
+        e.code === 'ArrowRight'
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    }
     this.keys[e.code] = true;
     this.audio.unlock();
     if (this.viewMode !== 'first-person' || this.pcFocusState !== 'none') return;
@@ -2603,29 +2651,14 @@ export class ApartmentEngine {
     }
 
     if (this.sofaSitState === 'sitting' || this.sofaSitState === 'seated') {
-      if (e.code === 'Escape' && !e.repeat) {
-        if (this.coPlayState !== 'none') {
-          this.stopSofaCoPlay();
-        } else {
-          this.standUpFromSofaCoSit();
-        }
-        return;
-      }
-
-      if (this.coPlayState === 'playing') {
+      // 沙发上统一操作：鼠标滚轮切换选项，F 确认执行（不再有 T/C/G/M/Esc/Space 等分散按键）。
+      // 对局中 WASD 移动、空格出手、Shift 冲刺属于游戏内操作，不算交互键。
+      if (this.coPlayState === 'playing' && this.livingTvGames.mode !== 'launcher') {
         if (
           (e.code === 'Space' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') &&
           !e.repeat
         ) {
           this.coPlayActionPulse = 1.0;
-        }
-        if (
-          this.livingTvGames.mode === 'launcher' &&
-          (e.code === 'Space' || e.code === 'Enter') &&
-          !e.repeat
-        ) {
-          this.selectLivingTvGame(this.livingTvGames.selectedGame, true);
-          return;
         }
       }
 
@@ -2639,49 +2672,20 @@ export class ApartmentEngine {
       if (this.heroineEncounterActive) {
         return;
       }
-      // Prioritize direct crosshair target on the Toy Gun first
-      if (this.hoveredTarget?.id === 'item_toy_gun') {
-        this.triggerHoveredInteraction();
-        return;
-      }
-      // Strict proximity fallback ONLY when standing next to the north toy-gun cushion (never steals sofa sit!)
-      const toyGunWorld = this.ctx.metaState.toyGunWorldMesh;
-      if (
-        this.currentRoom === 'living' &&
-        toyGunWorld &&
-        toyGunWorld.visible &&
-        this.hoveredTarget?.id !== 'living_sofa' &&
-        this.playerFeetPos.z < -5.85
-      ) {
-        const distToGun = Math.hypot(
-          this.playerFeetPos.x - toyGunWorld.position.x,
-          this.playerFeetPos.z - toyGunWorld.position.z
-        );
-        if (distToGun < 1.25) {
-          const gunTarget = this.ctx.interactables.find((i) => i.id === 'item_toy_gun');
-          if (gunTarget) {
-            this.hoveredTarget = gunTarget;
-            this.triggerHoveredInteraction();
-            return;
-          }
-        }
-      }
-      // Prioritize Heroine contextual interactions (bedroom first encounter, sofa co-sit, or routine chat)
+      // 交互统一为 F，判定只看准心：
+      // 1) 准心对准玩具枪 → 拾取；2) 准心对准沙发坐垫 → 坐沙发；3) 准心对准其他物体 → 与物体互动。
+      // 玩具枪与沙发坐垫的命中盒在空间上完全分开，因此两者不会互相抢判定。
       const promptKind = this.computeHeroinePromptKind();
       if (promptKind === 'bed') {
         this.callbacks.onRequestStartHeroineEncounter?.();
         return;
       }
-      if (promptKind === 'sofa') {
-        this.startSofaCoSit();
+      if (this.hoveredTarget) {
+        this.triggerHoveredInteraction();
         return;
       }
       if (promptKind === 'chat') {
         this.callbacks.onRequestStartRoutineChat?.('standing');
-        return;
-      }
-      if (this.hoveredTarget) {
-        this.triggerHoveredInteraction();
         return;
       }
       // Pressing F inside the bedroom sits at the PC; inside the basement launches the arcade cabinet
@@ -3330,44 +3334,46 @@ export class ApartmentEngine {
     };
 
     if (mode === 'daylight') {
-      // MiSide Soft Healing Daytime Palette: lowered window exposure to eliminate white blowout while preserving soft Bloom & lavender-grey AO depth
-      this.renderer.toneMappingExposure = 0.95;
-      this.scene.environmentIntensity = 0.32;
-      (this.scene.background as THREE.Color).setHex(0xf5e8e2);
-      (this.scene.fog as THREE.FogExp2).color.setHex(0xf7ece6);
-      this.baseFogDensity = 0.0115;
+      // MiSide Crisp Sunny Daylight: strong warm-cream directional sun key + luminous lavender-rose shadow contrast
+      this.renderer.toneMappingExposure = 1.04;
+      this.scene.environmentIntensity = 0.22;
+      (this.scene.background as THREE.Color).setHex(0xf6ebe4);
+      (this.scene.fog as THREE.FogExp2).color.setHex(0xf8ede6);
+      this.baseFogDensity = 0.0095;
       (this.scene.fog as THREE.FogExp2).density = this.baseFogDensity;
       if (this.volumetricFogMat) {
-        this.volumetricFogMat.uniforms.uFogColor.value.setHex(0xfff0e6);
-        this.volumetricFogMat.uniforms.uFogOpacity.value = 0.056;
+        this.volumetricFogMat.uniforms.uFogColor.value.setHex(0xfff1e2);
+        this.volumetricFogMat.uniforms.uFogOpacity.value = 0.068;
       }
       if (this.ctx.metaState.nonEuclidCorridor.dioramaLight) {
         this.ctx.metaState.nonEuclidCorridor.dioramaLight.color.setHex(0xfff0de);
-        this.ctx.metaState.nonEuclidCorridor.dioramaLight.intensity = 0.96;
+        this.ctx.metaState.nonEuclidCorridor.dioramaLight.intensity = 1.02;
       }
-      this.ambientLight.color.setHex(0xffe4d6);
-      this.ambientLight.intensity = 0.185;
-      this.sunLight.color.setHex(0xfff2d2);
-      this.baseSunIntensity = 1.50;
+      // Keep flat ambient low & cool-lavender so shadowed corners have rich dimensional depth
+      this.ambientLight.color.setHex(0xe2cde0);
+      this.ambientLight.intensity = 0.085;
+      this.sunLight.color.setHex(0xffefd0);
+      this.baseSunIntensity = 2.24;
       this.sunLight.intensity = this.baseSunIntensity;
-      this.sunLight.shadow.radius = 2.9;
-      this.sunLight.shadow.intensity = 0.80;
+      // Wide soft dual-ring diffuse penumbra (inner core + fading diffuse outer edge)
+      this.sunLight.shadow.radius = 5.4;
+      this.sunLight.shadow.intensity = 0.74;
       this.windowSunLight.intensity = 0.0;
-      this.hemiLight.color.setHex(0xffe6d8);
-      this.hemiLight.groundColor.setHex(0xb08c96);
-      this.hemiLight.intensity = 0.51;
-      this.baseWindowFillIntensity = 0.60;
+      this.hemiLight.color.setHex(0xfff0e4);
+      this.hemiLight.groundColor.setHex(0x8e6f8c);
+      this.hemiLight.intensity = 0.44;
+      this.baseWindowFillIntensity = 0.80;
       for (const w of this.windowFillLights) {
-        w.color.setHex(0xffe8dc);
+        w.color.setHex(0xffebd6);
         w.intensity = this.baseWindowFillIntensity;
       }
       if (this.ctx.metaState.bedroomMoonlightFill) {
         this.ctx.metaState.bedroomMoonlightFill.intensity = 0.0;
       }
       this.outlines.setColor(0x4c372f);
-      this.uniforms.uAnisotropy.value = 0.62;
-      this.uniforms.uTyndallIntensity.value = 1.02;
-      setWindowGlowColor(0xfff0dc);
+      this.uniforms.uAnisotropy.value = 0.72;
+      this.uniforms.uTyndallIntensity.value = 1.38;
+      setWindowGlowColor(0xfff4e2);
       this.postRig?.bloomController.applyForMode(mode, this.uniforms);
       if (silhouette) silhouette.visible = false;
     } else if (mode === 'sunset') {
@@ -3560,19 +3566,20 @@ export class ApartmentEngine {
       if (mode === 'daylight') {
         const dayHex =
           lamp.room === 'kitchen' || lamp.room === 'bathroom'
-            ? 0xfaf0f2
+            ? 0xfff4f0
             : lamp.room === 'basement'
               ? 0xf5e8dc
-              : 0xffeede;
+              : 0xffecd6;
         lamp.light.color.setHex(dayHex);
+        // Restrain daytime ceiling fill so directional window sunlight & shadows sculpt the rooms!
         lamp.modeMultiplier =
           lamp.room === 'basement'
             ? 1.0
-            : lamp.room === 'living'
-              ? 0.86
-              : lamp.room === 'bathroom'
-                ? 0.92
-                : 0.86;
+            : lamp.room === 'bathroom'
+              ? 0.72
+              : lamp.room === 'living'
+                ? 0.44
+                : 0.50;
       } else if (mode === 'sunset') {
         // Unified artistic golden-apricot / warm-rose dusk illumination across every room
         const duskHex =
@@ -5875,7 +5882,19 @@ export class ApartmentEngine {
       moveDirWorld: this.playerMoveDirWorld,
       viewMode: this.viewMode,
       thirdPersonPreview: this.thirdPersonPreview,
-      hideAll: hideAvatar || this.sofaSitState !== 'none',
+      hideAll: hideAvatar,
+      seatedOnSofa: this.sofaSitState !== 'none',
+      sofaBaseYaw: -Math.PI / 2,
+      coPlayMode:
+        this.coPlayState === 'handoff_reach'
+          ? 'reaching'
+          : this.coPlayState === 'playing'
+            ? 'holding'
+            : 'none',
+      coPlayReachProgress: this.coPlayHandoffProgress,
+      coPlayInputX: coPlayMoveX,
+      coPlayInputY: coPlayMoveY,
+      coPlayActionPulse: this.coPlayActionPulse,
     });
 
     // 3.55 Update Heroine VRM (bed-edge sitting / stand-up walk / expressive gestures / follow player)
@@ -6956,6 +6975,11 @@ export class ApartmentEngine {
       addOutline: true,
     });
     this.vrmAvatar.heroine.registerHeldControllerMeshes(heroineWhitePad, heroinePurplePad);
+    const protagonistVrmWhitePad = buildXboxControllerMesh(this.uniforms, 'white', this.outlines, {
+      addOutline: true,
+      isDynamic: true,
+    });
+    this.vrmAvatar.setHeldController(protagonistVrmWhitePad);
 
     // 3. Projectiles & Hit Spark FX containers
     this.projectileGroup.name = 'toy_projectiles';
@@ -7221,15 +7245,15 @@ export class ApartmentEngine {
 
   private syncHeldViewModelVisibility(): void {
     const equipped = this.getEquippedItem();
-    const hasCustomVrm = this.vrmAvatar?.hasVrm() ?? false;
-    const isCoPlayView =
-      (this.coPlayState === 'handoff_reach' || this.coPlayState === 'playing') &&
-      hasCustomVrm;
+    // Both built-in protagonist and custom VRM now render their real seated body + arms on the sofa,
+    // so never pop in the floating camera-attached hand rig during controller handoff/co-play!
+    const isCoPlayView = false;
     const canShow =
       this.viewMode === 'first-person' &&
       !this.thirdPersonPreview &&
       this.pcFocusState === 'none' &&
-      (isCoPlayView || (this.sofaSitState === 'none' && equipped !== null));
+      this.sofaSitState === 'none' &&
+      equipped !== null;
     this.heldItemAnchor.visible = canShow;
     this.heldToyGun.group.visible =
       this.sofaSitState === 'none' && !isCoPlayView && canShow && equipped?.id === 'toy_gun';
@@ -7396,39 +7420,14 @@ export class ApartmentEngine {
     }
 
     // 2. Post-dialogue Living Room sofa co-sitting vs routine chat
+    // 坐沙发判定严格绑定在沙发中南侧坐垫命中盒 (living_sofa)，与北侧玩具枪 (item_toy_gun) 在空间上完全隔开。
     if (heroine.isFollowingPlayer()) {
-      const distToHeroine = heroine.getDistanceToWorldPoint(this.playerFeetPos);
-
-      // Check if standing near Living Room south/center sofa cushions (separate from north toy gun at Z=-6.42)
-      if (
-        this.currentRoom === 'living' &&
-        this.playerFeetPos.z > -5.90 &&
-        this.playerFeetPos.z < -3.70
-      ) {
-        const distToSofaFront = Math.hypot(
-          this.playerFeetPos.x - 2.95,
-          this.playerFeetPos.z - (-4.85)
-        );
-        if (distToSofaFront < 2.45 && this.playerFeetPos.x < 4.55) {
-          this.camera.getWorldDirection(this.toyGunAimDirScratch);
-          this.toyGunToHeroineScratch
-            .set(2.45 - this.camera.position.x, 0.55 - this.camera.position.y, -4.85 - this.camera.position.z)
-            .normalize();
-          const sofaDot = this.toyGunAimDirScratch.dot(this.toyGunToHeroineScratch);
-
-          heroine.getHeadWorldPosition(this.encounterHeadPosScratch);
-          this.toyGunToHeroineScratch
-            .subVectors(this.encounterHeadPosScratch, this.camera.position)
-            .normalize();
-          const heroineDot = this.toyGunAimDirScratch.dot(this.toyGunToHeroineScratch);
-
-          if (sofaDot > 0.62 && (distToHeroine > 2.85 || sofaDot >= heroineDot - 0.08)) {
-            return 'sofa';
-          }
-        }
+      if (this.currentRoom === 'living' && this.hoveredTarget?.id === 'living_sofa') {
+        return 'sofa';
       }
 
-      if (distToHeroine < 3.05) {
+      const distToHeroine = heroine.getDistanceToWorldPoint(this.playerFeetPos);
+      if (!this.hoveredTarget && distToHeroine < 3.05) {
         return 'chat';
       }
     }
@@ -9056,7 +9055,7 @@ export class ApartmentEngine {
     clearTimeout(this.frameId);
 
     window.removeEventListener('resize', this.onResize);
-    window.removeEventListener('keydown', this.onKeyDown);
+    window.removeEventListener('keydown', this.onKeyDown, true);
     window.removeEventListener('keyup', this.onKeyUp);
     document.removeEventListener('pointerlockchange', this.onPointerLockChange);
     window.removeEventListener('pointermove', this.onPointerMove);

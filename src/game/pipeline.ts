@@ -173,20 +173,36 @@ export function installSoftShadowChunk(): void {
 					texture( shadowMap, vec3( shadowCoord.xy + vogelDiskSample( 4, 5, phi ) * radius, shadowCoord.z ) )
 				) * 0.2;`;
 
-    const upgraded4TapGaussian = `				shadow = 0.0;
-				float vogelWeightSum = 0.0;
-				for ( int i = 0; i < 4; i ++ ) {
-					vec2 vOffset = vogelDiskSample( i, 4, phi );
-					float w = exp( -dot( vOffset, vOffset ) * 1.10 );
-					shadow += texture( shadowMap, vec3( shadowCoord.xy + vOffset * radius, shadowCoord.z ) ) * w;
-					vogelWeightSum += w;
+    const upgradedDualRingPenumbra = `				// Dual-ring 12-tap Gaussian Vogel-disk PCF:
+				// 6 inner core taps (0.72 * radius) + 6 wide diffuse halo taps (2.15 * radius)
+				// creates soft grounded contact cores with smooth diffuse double-shadow edge fade!
+				float coreShadow = 0.0;
+				float coreWeight = 0.0;
+				for ( int i = 0; i < 6; i ++ ) {
+					vec2 vOffset = vogelDiskSample( i, 6, phi );
+					float w = exp( -dot( vOffset, vOffset ) * 1.15 );
+					coreShadow += texture( shadowMap, vec3( shadowCoord.xy + vOffset * radius * 0.72, shadowCoord.z ) ) * w;
+					coreWeight += w;
 				}
-				shadow /= max( vogelWeightSum, 0.0001 );`;
+				coreShadow /= max( coreWeight, 0.0001 );
+
+				float haloShadow = 0.0;
+				float haloWeight = 0.0;
+				for ( int j = 0; j < 6; j ++ ) {
+					vec2 vOuter = vogelDiskSample( j, 6, phi + 1.0471975 );
+					float w2 = exp( -dot( vOuter, vOuter ) * 0.65 );
+					haloShadow += texture( shadowMap, vec3( shadowCoord.xy + vOuter * radius * 2.15, shadowCoord.z ) ) * w2;
+					haloWeight += w2;
+				}
+				haloShadow /= max( haloWeight, 0.0001 );
+
+				// Blend inner shadow core (54%) + wide diffuse bounce penumbra (46%) for soft fading edges
+				shadow = mix( haloShadow, coreShadow, 0.54 );`;
 
     if (chunk.includes(original5Tap)) {
       THREE.ShaderChunk.shadowmap_pars_fragment = chunk.replace(
         original5Tap,
-        upgraded4TapGaussian
+        upgradedDualRingPenumbra
       );
     }
   }
@@ -353,11 +369,12 @@ export function createTwilightMaterial(
   if (inferredLacquer > 0.05) {
     mat = new THREE.MeshPhysicalMaterial({
       ...stdParams,
-      clearcoat: Math.min(0.28, 0.12 + inferredLacquer * 0.16),
-      clearcoatRoughness: 0.56,
-      reflectivity: 0.28,
-      specularIntensity: 0.52,
-      specularColor: new THREE.Color(0xffe6ba),
+      // Authentic water-based lacquer (水性清漆/水漆质感): crystal-clear silky satin-gloss topcoat over open-pore wood grain
+      clearcoat: Math.min(0.72, 0.30 + inferredLacquer * 0.44),
+      clearcoatRoughness: Math.max(0.16, 0.32 - inferredLacquer * 0.14),
+      reflectivity: 0.54,
+      specularIntensity: 0.72,
+      specularColor: new THREE.Color(0xfff5e8),
     });
   } else if (fabricCream > 0.5) {
     mat = new THREE.MeshPhysicalMaterial({
@@ -460,6 +477,14 @@ export function createTwilightMaterial(
             float heightMask = clamp((2.78 - wsSwayPos.y) * 0.65, 0.08, 1.0);
             transformed.x += waveA * uWindSway * heightMask;
             transformed.z += waveB * uWindSway * heightMask;
+          } else if (uWindSway < -0.001) {
+            // UV-anchored gentle cloth flutter (uv.y=1 anchored on backrest, uv.y=0 hanging hem flutters softly!)
+            float uvDrop = pow(clamp(1.0 - uv.y, 0.0, 1.0), 1.55);
+            vec4 wsTapPos = modelMatrix * vec4(transformed, 1.0);
+            float tPhase = uTime * 2.05 + wsTapPos.z * 3.8 + wsTapPos.y * 4.2;
+            float flutter = sin(tPhase) * 0.015 + cos(tPhase * 0.68 + wsTapPos.z * 2.6) * 0.0075;
+            transformed.z -= flutter * abs(uWindSway) * uvDrop;
+            transformed.x += sin(tPhase * 0.88 + wsTapPos.z * 2.2) * 0.0045 * abs(uWindSway) * uvDrop;
           }
           `
         )
@@ -578,14 +603,14 @@ export function createTwilightMaterial(
         vec3 doorGrainShift = mix(vec3(0.980, 0.968, 0.950), vec3(1.020, 1.012, 0.996), clamp(doorGrain, 0.0, 1.0));
         diffuseColor.rgb *= doorGradTint * doorGrainShift;
 
-        // Warm wood chroma enrichment inside recessed geometric cavities (natural carved-wood depth)
+        // Gentle natural carved-wood chroma warmth inside recessed cavities (自然雕刻凹槽色深)
         float interiorMask =
           smoothstep(0.032, 0.064, vLocalPos.y) *
           smoothstep(0.032, 0.064, doorH - vLocalPos.y) *
           (1.0 - smoothstep(doorHalfW - 0.062, doorHalfW - 0.030, abs(vLocalPos.x)));
         float recessT = clamp((uDoorRelief.x - abs(vLocalPos.z)) / max(uDoorRelief.y, 0.004), 0.0, 1.0) * interiorMask;
         float cavityWarmth = smoothstep(0.28, 0.96, recessT);
-        diffuseColor.rgb *= mix(vec3(1.0), vec3(0.955, 0.915, 0.870), cavityWarmth * 0.22);
+        diffuseColor.rgb *= mix(vec3(1.0), vec3(0.88, 0.82, 0.75), cavityWarmth * 0.30);
       } else if (uWoodLacquer > 0.01) {
         // Clear luminous MiSide honey-gold wood with gentle painterly vertical gradient & silky grain
         vec3 absN = abs(safeNormalize(vLocalNormal));
@@ -884,34 +909,34 @@ export function createTwilightMaterial(
         float sideShadow = smoothstep(0.26, -0.52, sideDot) * sideBevel;
         float sideCatch = smoothstep(0.14, 0.78, sideDot) * sideBevel;
 
-        // Deepest recessed moat channel, sloped bevel self-occlusion & inner panel setback
-        float deepGroove = smoothstep(0.56, 0.98, recessT);
+        // Natural carved-wood recessed channel & directional bevel self-occlusion (自然雕刻立体阴影，不过重)
+        float deepGroove = smoothstep(0.54, 0.98, recessT);
         float bevelRecess = smoothstep(0.05, 0.86, recessT) * slopeAmt;
         float panelSetback = smoothstep(0.18, 0.50, recessT) * (1.0 - slopeAmt) * (1.0 - deepGroove);
 
         float doorOcc = clamp(
-          deepGroove * 0.32 +
-          downBevel * (0.26 + 0.16 * recessT) +
-          bevelRecess * 0.15 +
-          sideShadow * 0.22 +
-          panelSetback * 0.055,
+          deepGroove * 0.38 +
+          downBevel * (0.30 + 0.18 * recessT) +
+          bevelRecess * 0.18 +
+          sideShadow * 0.24 +
+          panelSetback * 0.06,
           0.0,
-          0.46
+          0.54
         );
 
-        // Soft, natural warm honey-caramel depth shadow (distinct 3D relief without heavy dark creases)
-        vec3 warmDepthColor = vec3(0.58, 0.49, 0.41);
+        // Natural warm honey-wood carved relief shadow (subtle, realistic, never heavy black lines)
+        vec3 warmDepthColor = vec3(0.52, 0.43, 0.35);
         vec3 depthMul = mix(vec3(1.0), warmDepthColor, doorOcc);
         reflectedLight.directDiffuse *= depthMul;
-        reflectedLight.indirectDiffuse *= mix(vec3(1.0), warmDepthColor * 1.06, doorOcc);
-        reflectedLight.directSpecular *= (1.0 - doorOcc * 0.55);
-        reflectedLight.indirectSpecular *= (1.0 - doorOcc * 0.48);
+        reflectedLight.indirectDiffuse *= mix(vec3(1.0), warmDepthColor * 1.08, doorOcc);
+        reflectedLight.directSpecular *= (1.0 - doorOcc * 0.60);
+        reflectedLight.indirectSpecular *= (1.0 - doorOcc * 0.52);
 
-        // Gentle satin honey catchlight on upward-facing bevel sills & light-facing vertical bevels
-        float bevelCatch = clamp(upBevel * (0.45 + 0.55 * (1.0 - deepGroove)) + sideCatch * 0.34, 0.0, 1.0);
+        // Soft satin catchlight on upward-facing carved bevel sills
+        float bevelCatch = clamp(upBevel * (0.46 + 0.54 * (1.0 - deepGroove)) + sideCatch * 0.34, 0.0, 1.0);
         vec3 warmCatchTint = mix(vec3(1.0, 0.955, 0.875), vec3(1.0, 0.972, 0.910), uDaylightFactor * 0.5);
-        reflectedLight.indirectDiffuse += lambertAlb * warmCatchTint * (bevelCatch * 0.16);
-        reflectedLight.directSpecular += warmCatchTint * (bevelCatch * 0.024);
+        reflectedLight.indirectDiffuse += lambertAlb * warmCatchTint * (bevelCatch * 0.17);
+        reflectedLight.directSpecular += warmCatchTint * (bevelCatch * 0.025);
       }
 
       // Smooth filmic highlight shoulder compression for non-emissive diffuse surfaces
@@ -2116,23 +2141,23 @@ export function createProceduralTextures(renderer: THREE.WebGLRenderer): Procedu
   woodRoughCanvas.height = wSize;
   const wrctx = woodRoughCanvas.getContext('2d')!;
 
-  wctx.fillStyle = '#f2c987';
+  wctx.fillStyle = '#c48658';
   wctx.fillRect(0, 0, wSize, wSize);
   wbctx.fillStyle = '#929292';
   wbctx.fillRect(0, 0, wSize, wSize);
   wrctx.fillStyle = '#b4b4b4';
   wrctx.fillRect(0, 0, wSize, wSize);
 
-  // Curated MiSide clear luminous honey wood plank palette (light creamy honey -> clear golden honey -> warm amber honey)
+  // Richer, slightly deeper warm caramel-peach oak running-bond floor palette (保持工字拼色，整体略加深更有层次)
   const plankPalette: [number, number, number][] = [
-    [252, 224, 174], // Light creamy honey
-    [247, 212, 152], // Soft sunlit honey
-    [242, 200, 134], // Clear golden honey
-    [237, 192, 124], // Warm honey oak
-    [249, 218, 162], // Pale butter-honey
-    [232, 184, 114], // Rich amber honey
-    [244, 205, 142], // Balanced MiSide honey
-    [228, 178, 108], // Warm toasted honey
+    [214, 162, 118], // Warm honey-caramel
+    [206, 152, 108], // Rich apricot-oak
+    [198, 142, 98],  // Balanced warm chestnut-oak
+    [190, 132, 88],  // Deep peach-caramel oak
+    [210, 157, 113], // Soft toasted honey
+    [184, 126, 82],  // Rich roasted caramel oak
+    [202, 147, 103], // Mid caramel-apricot plank
+    [178, 120, 76],  // Deep warm amber-walnut
   ];
 
   const plankHash = (n: number): number => {
@@ -2166,9 +2191,9 @@ export function createProceduralTextures(renderer: THREE.WebGLRenderer): Procedu
       // Subtle continuous lightness & hue drift per individual plank
       const lumaShift = (h2 - 0.5) * 14.0;
       const hueWarmth = (h3 - 0.5) * 8.0;
-      const rBase = Math.max(185, Math.min(252, Math.round(pr + lumaShift + hueWarmth * 0.7)));
-      const gBase = Math.max(138, Math.min(226, Math.round(pg + lumaShift * 0.92 + hueWarmth * 0.15)));
-      const bBase = Math.max(96, Math.min(194, Math.round(pb + lumaShift * 0.82 - hueWarmth * 0.65)));
+      const rBase = Math.max(152, Math.min(232, Math.round(pr + lumaShift + hueWarmth * 0.7)));
+      const gBase = Math.max(106, Math.min(196, Math.round(pg + lumaShift * 0.92 + hueWarmth * 0.15)));
+      const bBase = Math.max(68, Math.min(162, Math.round(pb + lumaShift * 0.82 - hueWarmth * 0.65)));
 
       // Per-plank subtle roughness variation (144..206 -> distinct gentle satin sheen between neighboring boards)
       const boardRough = Math.round(146 + h2 * 56 + (palIdx % 3) * 4);
@@ -2368,8 +2393,8 @@ export function createProceduralTextures(renderer: THREE.WebGLRenderer): Procedu
   const woodFloorBump = track(finalizeTexture(woodBumpCanvas, maxAniso, 1, 1, true));
   const woodFloorRoughness = track(finalizeTexture(woodRoughCanvas, maxAniso, 1, 1, true));
 
-  // 1b. Clear Luminous Golden-Honey Furniture Veneer with Soft Gradient (512x512 + bump)
-  const foSize = 512;
+  // 1b. High-Res (1024x1024) Seamless Water-Lacquered Oak Furniture Wood Grain + Micro-Pore Bump (水漆木纹质感)
+  const foSize = 1024;
   const foCanvas = document.createElement('canvas');
   foCanvas.width = foSize;
   foCanvas.height = foSize;
@@ -2379,105 +2404,107 @@ export function createProceduralTextures(renderer: THREE.WebGLRenderer): Procedu
   fobCanvas.height = foSize;
   const fobCtx = fobCanvas.getContext('2d')!;
 
-  // Clear luminous honey-gold gradient (creamy light honey at top -> radiant honey gold -> warm amber honey at bottom)
-  const foGrad = foCtx.createLinearGradient(0, 0, 0, foSize);
-  foGrad.addColorStop(0.0, '#fce4b4');
-  foGrad.addColorStop(0.42, '#f5d090');
-  foGrad.addColorStop(0.78, '#ecc07b');
-  foGrad.addColorStop(1.0, '#e5b46c');
-  foCtx.fillStyle = foGrad;
+  // Warm honey-oak base under clear water-based lacquer (100% seamless across UV wraps)
+  foCtx.fillStyle = '#dfa170';
   foCtx.fillRect(0, 0, foSize, foSize);
 
-  // Subtle horizontal sunlit glow sweep across center of board
-  const foHGrad = foCtx.createLinearGradient(0, 0, foSize, 0);
-  foHGrad.addColorStop(0.0, 'rgba(222, 166, 94, 0.08)');
-  foHGrad.addColorStop(0.5, 'rgba(255, 246, 222, 0.14)');
-  foHGrad.addColorStop(1.0, 'rgba(222, 166, 94, 0.08)');
-  foCtx.fillStyle = foHGrad;
+  // Seamless periodic tonal warmth waves (identical at y=0 and y=foSize so tiled UV faces never split)
+  const foWave = foCtx.createLinearGradient(0, 0, 0, foSize);
+  foWave.addColorStop(0.0, 'rgba(255, 240, 222, 0.08)');
+  foWave.addColorStop(0.22, 'rgba(138, 76, 38, 0.075)');
+  foWave.addColorStop(0.48, 'rgba(255, 242, 224, 0.095)');
+  foWave.addColorStop(0.76, 'rgba(130, 70, 34, 0.075)');
+  foWave.addColorStop(1.0, 'rgba(255, 240, 222, 0.08)');
+  foCtx.fillStyle = foWave;
   foCtx.fillRect(0, 0, foSize, foSize);
 
+  // Smooth water-lacquer leveled bump base (mid-neutral gray so clearcoat glides smoothly)
   fobCtx.fillStyle = '#848484';
   fobCtx.fillRect(0, 0, foSize, foSize);
 
-  // Subtle broad sunlit honey-cream bands for hand-painted anime wood luster
-  for (let b = 0; b < 14; b++) {
-    const by = (b / 14) * foSize;
-    const bh = 18 + (b % 4) * 9;
-    foCtx.fillStyle = b % 2 === 0 ? 'rgba(255, 244, 214, 0.14)' : 'rgba(210, 152, 82, 0.065)';
+  // Organic seamless earlywood / latewood tonal ribbons
+  for (let b = 0; b < 20; b++) {
+    const by = (b / 20) * foSize;
+    const bh = foSize / 34;
+    foCtx.fillStyle =
+      b % 2 === 0 ? 'rgba(255, 240, 220, 0.065)' : 'rgba(122, 66, 34, 0.060)';
     foCtx.fillRect(0, by, foSize, bh);
   }
 
-  // Ultra-fine natural quarter-sawn honey-oak wood grain fibers + subtle medullary ray flecks
-  for (let i = 0; i < 140; i++) {
-    const fy = (i / 140) * foSize;
-    const w = 0.7 + (i % 3) * 0.42;
-    const isHighlight = i % 6 === 0;
-    const isDeepVein = i % 9 === 0;
+  // Rich flowing natural wood grain fibers (crisp & readable under translucent water lacquer)
+  for (let i = 0; i < 168; i++) {
+    const fy = (i / 168) * foSize;
+    const isHighlight = i % 5 === 0;
+    const isDeepVein = i % 7 === 0;
+    const w = isDeepVein ? 1.55 + (i % 3) * 0.45 : 0.95 + (i % 3) * 0.38;
     foCtx.strokeStyle = isHighlight
-      ? 'rgba(255, 248, 224, 0.19)'
+      ? 'rgba(255, 244, 226, 0.14)'
       : isDeepVein
-        ? 'rgba(162, 108, 52, 0.155)'
-        : i % 3 === 0
-          ? 'rgba(186, 130, 68, 0.11)'
-          : 'rgba(206, 150, 86, 0.075)';
+        ? 'rgba(104, 52, 24, 0.165)'
+        : 'rgba(142, 78, 40, 0.095)';
     foCtx.lineWidth = w;
     foCtx.beginPath();
     foCtx.moveTo(0, fy);
-    const wave1 = Math.sin(i * 0.48) * 3.8 + Math.cos(i * 0.19) * 2.2;
-    const wave2 = -Math.cos(i * 0.37) * 3.6 + Math.sin(i * 0.23) * 1.8;
-    foCtx.bezierCurveTo(170, fy + wave1, 340, fy + wave2, foSize, fy);
+    const wave1 = Math.sin(i * 0.43) * 8.2 + Math.cos(i * 0.17) * 4.5;
+    const wave2 = -Math.cos(i * 0.35) * 7.8 + Math.sin(i * 0.21) * 4.0;
+    foCtx.bezierCurveTo(foSize * 0.33, fy + wave1, foSize * 0.67, fy + wave2, foSize, fy);
     foCtx.stroke();
 
+    // Softly leveled lacquer micro-groove bump
     fobCtx.strokeStyle = isHighlight
-      ? 'rgba(164,164,164,0.22)'
+      ? 'rgba(154,154,154,0.22)'
       : isDeepVein
-        ? 'rgba(92,92,92,0.28)'
+        ? 'rgba(92,92,92,0.34)'
         : 'rgba(114,114,114,0.20)';
-    fobCtx.lineWidth = isDeepVein ? 1.05 : 0.82;
+    fobCtx.lineWidth = isDeepVein ? 1.3 : 0.95;
     fobCtx.beginPath();
     fobCtx.moveTo(0, fy);
-    fobCtx.bezierCurveTo(170, fy + wave1, 340, fy + wave2, foSize, fy);
+    fobCtx.bezierCurveTo(foSize * 0.33, fy + wave1, foSize * 0.67, fy + wave2, foSize, fy);
     fobCtx.stroke();
   }
-  // Organic elongated cathedral wood grain rings (nested warm honey arches)
-  for (let c = 0; c < 6; c++) {
-    const cx = 62 + c * 82;
-    const cy = 68 + ((c * 149) % 376);
-    for (let r = 1; r <= 4; r++) {
+
+  // Authentic nested cathedral wood grain arches (warm honey-amber growth rings)
+  for (let c = 0; c < 11; c++) {
+    const cx = 86 + ((c * 193) % (foSize - 172));
+    const cy = 72 + ((c * 277) % (foSize - 144));
+    const tilt = 0.024 * (c % 2 === 0 ? 1 : -1);
+    for (let r = 1; r <= 6; r++) {
       foCtx.strokeStyle =
-        r % 2 === 0 ? 'rgba(176, 118, 58, 0.095)' : 'rgba(196, 140, 76, 0.075)';
-      foCtx.lineWidth = 0.95 + (r % 2) * 0.35;
+        r % 2 === 0 ? 'rgba(112, 58, 28, 0.145)' : 'rgba(164, 96, 48, 0.105)';
+      foCtx.lineWidth = 1.15 + (r % 2) * 0.45;
       foCtx.beginPath();
-      foCtx.ellipse(cx, cy, r * 34, r * 4.6, 0.025 * (c % 2 === 0 ? 1 : -1), 0, Math.PI * 2);
+      foCtx.ellipse(cx, cy, r * 44, r * 6.4, tilt, 0, Math.PI * 2);
       foCtx.stroke();
 
-      fobCtx.strokeStyle = 'rgba(102, 102, 102, 0.18)';
-      fobCtx.lineWidth = 0.9;
+      fobCtx.strokeStyle = 'rgba(98, 98, 98, 0.22)';
+      fobCtx.lineWidth = 1.1;
       fobCtx.beginPath();
-      fobCtx.ellipse(cx, cy, r * 34, r * 4.6, 0.025 * (c % 2 === 0 ? 1 : -1), 0, Math.PI * 2);
+      fobCtx.ellipse(cx, cy, r * 44, r * 6.4, tilt, 0, Math.PI * 2);
       fobCtx.stroke();
     }
   }
-  // Subtle quarter-sawn oak medullary ray sheen ribbons & delicate fine wood pore flecks
-  for (let i = 0; i < 480; i++) {
-    const px = (i * 197 + 19) % foSize;
-    const py = (i * 313 + 7) % foSize;
-    const len = 6 + (i % 15);
-    if (i % 11 === 0) {
-      // Soft golden medullary ray fleck
-      foCtx.fillStyle = 'rgba(255, 244, 214, 0.14)';
-      foCtx.fillRect(px, py, len * 0.9, 2);
+
+  // Quarter-sawn oak medullary ray sheen ribbons & delicate fine wood pore flecks
+  for (let i = 0; i < 1600; i++) {
+    const px = (i * 389 + 37) % foSize;
+    const py = (i * 617 + 19) % foSize;
+    const len = 8 + (i % 22);
+    if (i % 13 === 0) {
+      // Silky golden medullary ray sheen under clear water lacquer
+      foCtx.fillStyle = 'rgba(255, 246, 224, 0.17)';
+      foCtx.fillRect(px, py, len * 1.1, 2.2);
     } else {
-      foCtx.fillStyle = i % 3 === 0 ? 'rgba(255, 245, 220, 0.11)' : 'rgba(172, 116, 56, 0.085)';
-      foCtx.fillRect(px, py, len, 1);
-      fobCtx.fillStyle = 'rgba(98, 98, 98, 0.21)';
-      fobCtx.fillRect(px, py, len, 1);
+      foCtx.fillStyle =
+        i % 3 === 0 ? 'rgba(255, 245, 226, 0.11)' : 'rgba(116, 62, 28, 0.125)';
+      foCtx.fillRect(px, py, len, 1.2);
+      fobCtx.fillStyle = 'rgba(92, 92, 92, 0.24)';
+      fobCtx.fillRect(px, py, len, 1.2);
     }
   }
   const furnitureOak = track(finalizeTexture(foCanvas, maxAniso, 1, 1));
   const furnitureWoodBump = track(finalizeTexture(fobCanvas, maxAniso, 1, 1, true));
 
-  // 2. Desaturated Morandi Warm Oatmeal / Pink-Taupe Area Rug (512x512 twill + subtle baked border + bump)
+  // 2. Cozy Light Khaki Woven Area Rug (浅卡其色地毯, 512x512 twill + soft double border + bump)
   const rugSize = 512;
   const rugCanvas = document.createElement('canvas');
   rugCanvas.width = rugSize;
@@ -2488,13 +2515,13 @@ export function createProceduralTextures(renderer: THREE.WebGLRenderer): Procedu
   rugBumpCanvas.height = rugSize;
   const rbctx = rugBumpCanvas.getContext('2d')!;
 
-  rctx.fillStyle = '#e7ddd7';
+  rctx.fillStyle = '#ddd0b8';
   rctx.fillRect(0, 0, rugSize, rugSize);
   rbctx.fillStyle = '#808080';
   rbctx.fillRect(0, 0, rugSize, rugSize);
 
   for (let i = 0; i < rugSize; i += 6) {
-    rctx.strokeStyle = i % 12 === 0 ? 'rgba(168, 146, 138, 0.13)' : 'rgba(255, 250, 246, 0.22)';
+    rctx.strokeStyle = i % 12 === 0 ? 'rgba(164, 146, 118, 0.14)' : 'rgba(248, 242, 228, 0.22)';
     rctx.lineWidth = 2;
     rctx.beginPath();
     rctx.moveTo(i, 0);
@@ -2516,10 +2543,10 @@ export function createProceduralTextures(renderer: THREE.WebGLRenderer): Procedu
     rbctx.lineTo(rugSize, i);
     rbctx.stroke();
   }
-  rctx.strokeStyle = 'rgba(182, 156, 148, 0.28)';
+  rctx.strokeStyle = 'rgba(176, 158, 130, 0.30)';
   rctx.lineWidth = 14;
   rctx.strokeRect(18, 18, rugSize - 36, rugSize - 36);
-  rctx.strokeStyle = 'rgba(148, 124, 118, 0.16)';
+  rctx.strokeStyle = 'rgba(148, 130, 104, 0.18)';
   rctx.lineWidth = 3;
   rctx.strokeRect(32, 32, rugSize - 64, rugSize - 64);
   const rugWeave = track(finalizeTexture(rugCanvas, maxAniso, 1, 1));
@@ -2559,28 +2586,28 @@ export function createProceduralTextures(renderer: THREE.WebGLRenderer): Procedu
   kitRoughCanvas.height = kitSize;
   const krctx = kitRoughCanvas.getContext('2d')!;
 
-  // Warm recessed mortar grout base
-  kctx.fillStyle = '#aba19b';
+  // Warm dark umber mortar grout base for brown & ochre-umber two-tone marble tiles (棕色和赭褐色拼色大理石地砖)
+  kctx.fillStyle = '#4e3727';
   kctx.fillRect(0, 0, kitSize, kitSize);
-  kbctx.fillStyle = '#262626';
+  kbctx.fillStyle = '#242424';
   kbctx.fillRect(0, 0, kitSize, kitSize);
-  krctx.fillStyle = '#f2f2f2'; // matte sandy grout (roughness ~0.95)
+  krctx.fillStyle = '#eaeaea'; // matte mortar grout (roughness ~0.92)
   krctx.fillRect(0, 0, kitSize, kitSize);
 
   // Subtle granular mortar texture inside grout seams
   for (let i = 0; i < 1800; i++) {
     const gx = (i * 211 + 17) % kitSize;
     const gy = (i * 389 + 43) % kitSize;
-    const shade = 148 + (i % 34);
-    kctx.fillStyle = `rgba(${shade}, ${shade - 8}, ${shade - 12}, 0.35)`;
+    const shade = 58 + (i % 24);
+    kctx.fillStyle = `rgba(${shade + 18}, ${shade}, ${Math.max(20, shade - 16)}, 0.40)`;
     kctx.fillRect(gx, gy, 2, 2);
-    const bShade = 28 + (i % 24);
+    const bShade = 24 + (i % 22);
     kbctx.fillStyle = `rgb(${bShade}, ${bShade}, ${bShade})`;
     kbctx.fillRect(gx, gy, 2, 2);
   }
 
-  const kitCell = kitSize / 4; // 256px per 0.50m ceramic tile
-  const kitGrout = 2; // Fine 0.4x hairline ceramic grout seam
+  const kitCell = kitSize / 4; // 256px per 0.50m marble tile
+  const kitGrout = 2; // Fine hairline stone grout seam
   for (let tyIdx = 0; tyIdx < 4; tyIdx++) {
     for (let txIdx = 0; txIdx < 4; txIdx++) {
       const seed = txIdx * 13 + tyIdx * 29 + 7;
@@ -2589,78 +2616,107 @@ export function createProceduralTextures(renderer: THREE.WebGLRenderer): Procedu
       const tw = kitCell - kitGrout * 2;
       const th = kitCell - kitGrout * 2;
 
-      // Per-tile organic warm cream-porcelain batch variation
-      const baseR = 236 + ((seed * 5) % 9) - 4;
-      const baseG = 230 + ((seed * 7) % 9) - 4;
-      const baseB = 224 + ((seed * 11) % 10) - 4;
+      // Checkerboard two-tone natural marble harmony:
+      // Tile A = warm walnut brown (棕色), Tile B = earthy ochre-umber / terracotta-sienna (赭褐色)
+      const isOchreTile = (txIdx + tyIdx) % 2 === 1;
+      const baseR = (isOchreTile ? 166 : 126) + ((seed * 5) % 9) - 4;
+      const baseG = (isOchreTile ? 114 : 86) + ((seed * 7) % 9) - 4;
+      const baseB = (isOchreTile ? 76 : 60) + ((seed * 11) % 9) - 4;
 
-      // Soft directional glaze gradient across each porcelain face
+      // Soft directional polished stone gradient across each marble slab
       const diagGrad = kctx.createLinearGradient(x0, y0, x0 + tw, y0 + th);
-      diagGrad.addColorStop(0.0, `rgb(${Math.min(252, baseR + 7)}, ${Math.min(249, baseG + 7)}, ${Math.min(247, baseB + 6)})`);
+      diagGrad.addColorStop(0.0, `rgb(${Math.min(240, baseR + 12)}, ${Math.min(220, baseG + 10)}, ${Math.min(200, baseB + 8)})`);
       diagGrad.addColorStop(0.48, `rgb(${baseR}, ${baseG}, ${baseB})`);
-      diagGrad.addColorStop(1.0, `rgb(${baseR - 7}, ${baseG - 8}, ${baseB - 7})`);
+      diagGrad.addColorStop(1.0, `rgb(${Math.max(40, baseR - 11)}, ${Math.max(30, baseG - 9)}, ${Math.max(22, baseB - 8)})`);
       kctx.fillStyle = diagGrad;
       kctx.fillRect(x0, y0, tw, th);
 
-      // Subtle cloud-like porcelain mineral mottling & faint stone veining
-      for (let m = 0; m < 6; m++) {
-        const mx = x0 + 26 + ((seed * 41 + m * 67) % (tw - 52));
-        const my = y0 + 26 + ((seed * 59 + m * 83) % (th - 52));
-        const mr = 32 + ((seed + m * 17) % 44);
+      // Organic warm mineral stone clouding
+      for (let m = 0; m < 7; m++) {
+        const mx = x0 + 24 + ((seed * 41 + m * 67) % (tw - 48));
+        const my = y0 + 24 + ((seed * 59 + m * 83) % (th - 48));
+        const mr = 36 + ((seed + m * 19) % 48);
         const mg = kctx.createRadialGradient(mx, my, 2, mx, my, mr);
-        const warm = (seed + m) % 2 === 0;
-        mg.addColorStop(0, warm ? 'rgba(218, 206, 198, 0.16)' : 'rgba(255, 253, 250, 0.22)');
-        mg.addColorStop(1, 'rgba(235, 229, 224, 0)');
+        const lighter = (seed + m) % 2 === 0;
+        mg.addColorStop(0, lighter ? 'rgba(218, 178, 138, 0.20)' : 'rgba(72, 44, 26, 0.22)');
+        mg.addColorStop(1, 'rgba(138, 96, 66, 0)');
         kctx.fillStyle = mg;
         kctx.beginPath();
         kctx.arc(mx, my, mr, 0, Math.PI * 2);
         kctx.fill();
       }
 
-      // Delicate translucent ceramic stone veins (subtle, natural porcelain finish)
+      // Layered organic marble calcite veins (warm cream-ivory + pale gold + subtle umber fractures)
       kctx.save();
       kctx.beginPath();
-      kctx.rect(x0 + 3, y0 + 3, tw - 6, th - 6);
+      kctx.rect(x0 + 2, y0 + 2, tw - 4, th - 4);
       kctx.clip();
-      for (let v = 0; v < 2; v++) {
-        const vx1 = x0 + ((seed * 37 + v * 97) % tw);
-        const vy1 = y0 + ((seed * 53 + v * 61) % 60);
-        const vx2 = x0 + ((seed * 71 + v * 113) % tw);
-        const vy2 = y0 + th - ((seed * 23 + v * 47) % 60);
-        kctx.strokeStyle = v === 0 ? 'rgba(188, 178, 174, 0.16)' : 'rgba(255, 252, 248, 0.24)';
-        kctx.lineWidth = v === 0 ? 2.2 : 1.4;
+      for (let v = 0; v < 4; v++) {
+        const flip = (seed + v) % 2 === 0;
+        const vx1 = flip ? x0 - 8 : x0 + ((seed * 37 + v * 71) % tw);
+        const vy1 = flip ? y0 + ((seed * 43 + v * 59) % th) : y0 - 8;
+        const vx2 = flip ? x0 + tw + 8 : x0 + ((seed * 67 + v * 97) % tw);
+        const vy2 = flip ? y0 + ((seed * 29 + v * 83) % th) : y0 + th + 8;
+        const cp1x = (vx1 + vx2) * 0.5 + (((seed + v * 3) % 5) - 2) * 26;
+        const cp1y = (vy1 + vy2) * 0.5 - (((seed + v * 5) % 5) - 2) * 22;
+        const cp2x = (vx1 + vx2) * 0.5 - (((seed + v * 7) % 5) - 2) * 24;
+        const cp2y = (vy1 + vy2) * 0.5 + (((seed + v * 11) % 5) - 2) * 24;
+
+        // Soft diffused mineral halo around primary vein
+        kctx.strokeStyle = v === 2 ? 'rgba(84, 50, 30, 0.16)' : 'rgba(236, 212, 182, 0.16)';
+        kctx.lineWidth = v === 0 ? 5.0 : 3.0;
         kctx.beginPath();
         kctx.moveTo(vx1, vy1);
-        kctx.bezierCurveTo(
-          (vx1 + vx2) * 0.5 + ((seed % 3) - 1) * 28,
-          y0 + th * 0.35,
-          (vx1 + vx2) * 0.5 - ((seed % 3) - 1) * 24,
-          y0 + th * 0.68,
-          vx2,
-          vy2
-        );
+        kctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, vx2, vy2);
         kctx.stroke();
+
+        // Crisp core marble vein
+        kctx.strokeStyle =
+          v === 0
+            ? 'rgba(244, 228, 202, 0.36)'
+            : v === 2
+              ? 'rgba(88, 52, 32, 0.24)'
+              : 'rgba(226, 198, 160, 0.26)';
+        kctx.lineWidth = v === 0 ? 1.7 : 1.05;
+        kctx.beginPath();
+        kctx.moveTo(vx1, vy1);
+        kctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, vx2, vy2);
+        kctx.stroke();
+
+        // Fine offshoot branch fracture
+        if (v < 2) {
+          const midX = (vx1 + vx2) * 0.5;
+          const midY = (vy1 + vy2) * 0.5;
+          const bx2 = midX + (v === 0 ? 54 : -48);
+          const by2 = midY + (v === 0 ? -38 : 44);
+          kctx.strokeStyle = 'rgba(238, 218, 190, 0.22)';
+          kctx.lineWidth = 0.85;
+          kctx.beginPath();
+          kctx.moveTo(midX, midY);
+          kctx.quadraticCurveTo(midX + 12, midY - 14, bx2, by2);
+          kctx.stroke();
+        }
       }
       kctx.restore();
 
-      // Ultra-fine ceramic glaze speckles
-      for (let s = 0; s < 48; s++) {
+      // Ultra-fine warm stone mineral flecks
+      for (let s = 0; s < 36; s++) {
         const sx = x0 + 6 + ((s * 67 + seed * 31) % (tw - 12));
         const sy = y0 + 6 + ((s * 103 + seed * 47) % (th - 12));
-        kctx.fillStyle = s % 3 === 0 ? 'rgba(168, 158, 154, 0.12)' : 'rgba(255, 253, 252, 0.24)';
+        kctx.fillStyle = s % 3 === 0 ? 'rgba(246, 230, 208, 0.16)' : 'rgba(62, 38, 22, 0.18)';
         kctx.fillRect(sx, sy, 2, 2);
       }
 
-      // Crisp micro-beveled tile edge shading scaled proportionally to 0.4x grout width
-      kctx.strokeStyle = 'rgba(255, 253, 250, 0.68)';
-      kctx.lineWidth = 1.6;
+      // Crisp micro-beveled marble tile edge highlights
+      kctx.strokeStyle = 'rgba(248, 230, 206, 0.34)';
+      kctx.lineWidth = 1.4;
       kctx.beginPath();
       kctx.moveTo(x0 + 1, y0 + th - 1);
       kctx.lineTo(x0 + 1, y0 + 1);
       kctx.lineTo(x0 + tw - 1, y0 + 1);
       kctx.stroke();
 
-      kctx.strokeStyle = 'rgba(146, 136, 130, 0.30)';
+      kctx.strokeStyle = 'rgba(54, 34, 20, 0.42)';
       kctx.lineWidth = 1.6;
       kctx.beginPath();
       kctx.moveTo(x0 + tw - 1, y0 + 1.5);
@@ -2668,12 +2724,7 @@ export function createProceduralTextures(renderer: THREE.WebGLRenderer): Procedu
       kctx.lineTo(x0 + 1.5, y0 + th - 1);
       kctx.stroke();
 
-      // Subtle inner glaze inset frame
-      kctx.strokeStyle = 'rgba(176, 166, 162, 0.12)';
-      kctx.lineWidth = 1.0;
-      kctx.strokeRect(x0 + 3, y0 + 3, tw - 6, th - 6);
-
-      // Bump map: crisp narrow chamfered ceramic bevel + subtly crowned glazed interior
+      // Bump map: crisp narrow chamfered marble bevel + smooth polished slab face
       kbctx.fillStyle = '#929292';
       kbctx.fillRect(x0, y0, tw, th);
       kbctx.fillStyle = '#cbcbcb';
@@ -2686,24 +2737,24 @@ export function createProceduralTextures(renderer: THREE.WebGLRenderer): Procedu
         y0 + th * 0.5,
         tw * 0.62
       );
-      bTileGrad.addColorStop(0.0, '#f0f0f0');
+      bTileGrad.addColorStop(0.0, '#efefef');
       bTileGrad.addColorStop(0.85, '#e2e2e2');
       bTileGrad.addColorStop(1.0, '#d4d4d4');
       kbctx.fillStyle = bTileGrad;
       kbctx.fillRect(x0 + 3, y0 + 3, tw - 6, th - 6);
 
-      // Roughness map: satin-glazed porcelain face (~0.34-0.42), tight bevel (~0.56), matte grout (~0.95)
-      krctx.fillStyle = '#929292';
+      // Roughness map: polished satin marble face (~0.28-0.35), tight bevel (~0.48), matte grout (~0.92)
+      krctx.fillStyle = '#7c7c7c';
       krctx.fillRect(x0, y0, tw, th);
-      const roughBase = 88 + ((seed * 7) % 18); // ~0.35 .. 0.42 glossy-satin ceramic
+      const roughBase = 70 + ((seed * 7) % 16);
       krctx.fillStyle = `rgb(${roughBase}, ${roughBase}, ${roughBase})`;
       krctx.fillRect(x0 + 2, y0 + 2, tw - 4, th - 4);
       for (let rs = 0; rs < 16; rs++) {
         const rx = x0 + 18 + ((seed * 37 + rs * 59) % (tw - 36));
         const ry = y0 + 18 + ((seed * 61 + rs * 73) % (th - 36));
-        const rr = 14 + ((seed + rs * 11) % 24);
+        const rr = 16 + ((seed + rs * 11) % 26);
         const rg = krctx.createRadialGradient(rx, ry, 1, rx, ry, rr);
-        const rv = rs % 2 === 0 ? roughBase - 14 : roughBase + 16;
+        const rv = rs % 2 === 0 ? Math.max(50, roughBase - 14) : roughBase + 16;
         rg.addColorStop(0, `rgba(${rv}, ${rv}, ${rv}, 0.28)`);
         rg.addColorStop(1, `rgba(${roughBase}, ${roughBase}, ${roughBase}, 0)`);
         krctx.fillStyle = rg;
@@ -3415,12 +3466,12 @@ export function createProceduralTextures(renderer: THREE.WebGLRenderer): Procedu
   // repeat = (1, 1) because addWall scales UVs directly in world meters!
   const wallpaperLiving = track(finalizeTexture(wpLivCanvas, maxAniso, 1, 1));
 
-  // 16. World-Scaled Bright Warm Light-Honey Wood Wainscoting Texture (浅原木/蜂蜜木色护墙板)
+  // 16. World-Scaled Warm Light Peach-Wood Wainscoting Texture (比木质框线略浅的温润桃木色护墙板)
   const wainCanvas = document.createElement('canvas');
   wainCanvas.width = 512;
   wainCanvas.height = 512;
   const wn = wainCanvas.getContext('2d')!;
-  wn.fillStyle = '#eed0ae';
+  wn.fillStyle = '#dba078';
   wn.fillRect(0, 0, 512, 512);
 
   // 8 vertical tongue-and-groove planks per 1.0m tile (64px per vertical plank)
@@ -3428,49 +3479,49 @@ export function createProceduralTextures(renderer: THREE.WebGLRenderer): Procedu
   for (let p = 0; p < 8; p++) {
     const px = p * plankStep;
     const toneDelta = ((p * 5 + 3) % 5) - 2;
-    const rP = 238 + toneDelta * 2.5;
-    const gP = 207 + toneDelta * 2.5;
-    const bP = 172 + toneDelta * 2.0;
+    const rP = 219 + toneDelta * 2.2;
+    const gP = 158 + toneDelta * 1.8;
+    const bP = 118 + toneDelta * 1.5;
     wn.fillStyle = `rgb(${Math.round(rP)}, ${Math.round(gP)}, ${Math.round(bP)})`;
     wn.fillRect(px, 0, plankStep, 512);
 
     const pGrad = wn.createLinearGradient(px, 0, px + plankStep, 0);
-    pGrad.addColorStop(0.0, 'rgba(176, 130, 92, 0.16)');
-    pGrad.addColorStop(0.12, 'rgba(255, 246, 232, 0.14)');
-    pGrad.addColorStop(0.5, 'rgba(255, 250, 240, 0.16)');
-    pGrad.addColorStop(0.88, 'rgba(255, 246, 232, 0.14)');
-    pGrad.addColorStop(1.0, 'rgba(176, 130, 92, 0.18)');
+    pGrad.addColorStop(0.0, 'rgba(136, 76, 44, 0.18)');
+    pGrad.addColorStop(0.14, 'rgba(246, 208, 178, 0.12)');
+    pGrad.addColorStop(0.5, 'rgba(252, 218, 190, 0.14)');
+    pGrad.addColorStop(0.86, 'rgba(246, 208, 178, 0.10)');
+    pGrad.addColorStop(1.0, 'rgba(136, 76, 44, 0.20)');
     wn.fillStyle = pGrad;
     wn.fillRect(px, 0, plankStep, 512);
 
-    // Soft warm honey V-groove seam between adjacent planks
-    wn.strokeStyle = 'rgba(162, 118, 82, 0.28)';
+    // Rich warm peach-wood V-groove seam between adjacent planks
+    wn.strokeStyle = 'rgba(128, 70, 40, 0.34)';
     wn.lineWidth = 1.8;
     wn.beginPath();
     wn.moveTo(px, 0);
     wn.lineTo(px, 512);
     wn.stroke();
 
-    wn.strokeStyle = 'rgba(255, 248, 238, 0.34)';
-    wn.lineWidth = 1.4;
+    wn.strokeStyle = 'rgba(248, 212, 184, 0.30)';
+    wn.lineWidth = 1.2;
     wn.beginPath();
     wn.moveTo(px + 2, 0);
     wn.lineTo(px + 2, 512);
     wn.stroke();
   }
 
-  // Fine, delicate vertical honey-wood fibers
+  // Fine, delicate vertical peach-wood fibers
   for (let x = 2; x < 512; x += 4) {
     const plankIdx = Math.floor(x / plankStep);
     const localX = ((x % plankStep) - plankStep * 0.5) / (plankStep * 0.5);
     const isDark = (x / 4) % 2 === 0;
-    wn.strokeStyle = isDark ? 'rgba(182, 134, 94, 0.10)' : 'rgba(255, 244, 230, 0.12)';
-    wn.lineWidth = 1.1;
+    wn.strokeStyle = isDark ? 'rgba(148, 84, 50, 0.11)' : 'rgba(248, 214, 188, 0.10)';
+    wn.lineWidth = 1.05;
     wn.beginPath();
     const phaseShift = plankIdx * 1.15;
     for (let y = 0; y <= 512; y += 24) {
       const arch =
-        Math.sin((y / 512) * Math.PI * 2.0 + phaseShift) * (1.0 - Math.abs(localX)) * 2.6;
+        Math.sin((y / 512) * Math.PI * 2.0 + phaseShift) * (1.0 - Math.abs(localX)) * 2.4;
       if (y === 0) wn.moveTo(x + arch, y);
       else wn.lineTo(x + arch, y);
     }
@@ -3512,83 +3563,87 @@ export function createProceduralTextures(renderer: THREE.WebGLRenderer): Procedu
   }
   const wainscotWhite = track(finalizeTexture(wainWhiteCanvas, maxAniso, 1, 1));
 
-  // 17. Bedroom Wallpaper: Iconic MiSide Pastel Pink Diagonal-Diamond Lattice + Soft White Cloud/Heart Motifs!
+  // 17. Bedroom Wallpaper: French Sage-Celadon Vertical Regency Stripes & Delicate Botanical Damask (法式淡绿碎花竖条纹壁纸)
   const wpBedCanvas = document.createElement('canvas');
   wpBedCanvas.width = 512;
   wpBedCanvas.height = 512;
   const bwp = wpBedCanvas.getContext('2d')!;
-  // Soft strawberry-blush pastel pink paper base
-  bwp.fillStyle = '#f4b5c4';
+  // Soft French pale sage-pistachio paper base
+  bwp.fillStyle = '#dde9d9';
   bwp.fillRect(0, 0, 512, 512);
 
-  // Subtle matte paper weave micro-grain
+  // Classic French Regency vertical tonal stripes (seamless 64px repeat)
+  for (let x = 0; x < 512; x += 64) {
+    bwp.fillStyle = 'rgba(250, 252, 245, 0.44)';
+    bwp.fillRect(x, 0, 28, 512);
+    bwp.fillStyle = 'rgba(136, 168, 132, 0.14)';
+    bwp.fillRect(x + 28, 0, 3, 512);
+    bwp.fillRect(x + 61, 0, 3, 512);
+  }
+
+  // Subtle matte French linen paper weave micro-grain
   for (let y = 0; y < 512; y += 6) {
-    bwp.fillStyle = y % 12 === 0 ? 'rgba(255, 245, 248, 0.08)' : 'rgba(214, 134, 156, 0.05)';
+    bwp.fillStyle = y % 12 === 0 ? 'rgba(255, 255, 248, 0.08)' : 'rgba(122, 152, 118, 0.05)';
     bwp.fillRect(0, y, 512, 2);
   }
 
-  // Crisp seamless 45-degree white diagonal diamond lattice (4 repeats per 512px = 128px cell)
-  const cell = 128;
-  bwp.strokeStyle = 'rgba(255, 246, 249, 0.46)';
-  bwp.lineWidth = 3.0;
-  for (let k = -512; k <= 1024; k += cell) {
-    bwp.beginPath();
-    bwp.moveTo(k, 0);
-    bwp.lineTo(k + 512, 512);
-    bwp.stroke();
-
-    bwp.beginPath();
-    bwp.moveTo(k, 512);
-    bwp.lineTo(k + 512, 0);
-    bwp.stroke();
-  }
-
-  // Soft fluffy white cloud & tiny heart silhouettes centered along lattice nodes (seamless wrapping!)
-  const drawSoftCloud = (cx: number, cy: number, scale: number) => {
+  // Delicate French botanical sage-leaf medallion & cream-ivory blossom motif (seamless wrapping)
+  const drawFrenchMedallion = (cx: number, cy: number, scale: number) => {
     for (const ox of [-512, 0, 512]) {
       for (const oy of [-512, 0, 512]) {
         const x = cx + ox;
         const y = cy + oy;
         if (x < -48 || x > 560 || y < -48 || y > 560) continue;
-        bwp.fillStyle = 'rgba(255, 244, 248, 0.56)';
+        // Symmetrical French damask olive-sage leaves
+        bwp.fillStyle = 'rgba(128, 162, 124, 0.34)';
+        for (const dir of [-1, 1]) {
+          bwp.save();
+          bwp.translate(x + dir * 11 * scale, y + 2 * scale);
+          bwp.rotate(dir * 0.48);
+          bwp.beginPath();
+          bwp.ellipse(0, 0, 12 * scale, 4.8 * scale, 0, 0, Math.PI * 2);
+          bwp.fill();
+          bwp.restore();
+
+          bwp.save();
+          bwp.translate(x + dir * 9 * scale, y - 10 * scale);
+          bwp.rotate(dir * -0.42);
+          bwp.beginPath();
+          bwp.ellipse(0, 0, 9.5 * scale, 4.0 * scale, 0, 0, Math.PI * 2);
+          bwp.fill();
+          bwp.restore();
+        }
+        // Central delicate French cream-white fleur-de-lis blossom
+        bwp.fillStyle = 'rgba(252, 250, 242, 0.72)';
+        for (let p = 0; p < 4; p++) {
+          const a = (p / 4) * Math.PI * 2;
+          bwp.beginPath();
+          bwp.ellipse(
+            x + Math.cos(a) * 6.5 * scale,
+            y + Math.sin(a) * 6.5 * scale,
+            5.2 * scale,
+            3.4 * scale,
+            a,
+            0,
+            Math.PI * 2
+          );
+          bwp.fill();
+        }
+        bwp.fillStyle = 'rgba(218, 198, 138, 0.65)';
         bwp.beginPath();
-        bwp.arc(x - 10 * scale, y + 3 * scale, 10 * scale, 0, Math.PI * 2);
-        bwp.arc(x + 10 * scale, y + 3 * scale, 9.5 * scale, 0, Math.PI * 2);
-        bwp.arc(x, y - 4 * scale, 12.5 * scale, 0, Math.PI * 2);
-        bwp.arc(x, y + 5 * scale, 9.5 * scale, 0, Math.PI * 2);
-        bwp.fill();
-      }
-    }
-  };
-  const drawSoftHeart = (cx: number, cy: number, scale: number) => {
-    for (const ox of [-512, 0, 512]) {
-      for (const oy of [-512, 0, 512]) {
-        const x = cx + ox;
-        const y = cy + oy;
-        if (x < -36 || x > 548 || y < -36 || y > 548) continue;
-        bwp.fillStyle = 'rgba(255, 242, 247, 0.50)';
-        bwp.beginPath();
-        bwp.arc(x - 5.2 * scale, y - 2.5 * scale, 6.2 * scale, 0, Math.PI * 2);
-        bwp.arc(x + 5.2 * scale, y - 2.5 * scale, 6.2 * scale, 0, Math.PI * 2);
-        bwp.moveTo(x - 10.8 * scale, y - 0.5 * scale);
-        bwp.lineTo(x, y + 11.2 * scale);
-        bwp.lineTo(x + 10.8 * scale, y - 0.5 * scale);
+        bwp.arc(x, y, 2.8 * scale, 0, Math.PI * 2);
         bwp.fill();
       }
     }
   };
 
+  const cell = 128;
   for (let row = 0; row < 4; row++) {
     for (let col = 0; col < 4; col++) {
-      const ix = col * cell;
-      const iy = row * cell;
-      if ((row + col) % 2 === 0) {
-        drawSoftCloud(ix, iy, 1.08);
-        drawSoftHeart(ix + cell * 0.5, iy + cell * 0.5, 0.92);
-      } else {
-        drawSoftCloud(ix + cell * 0.5, iy + cell * 0.5, 0.96);
-        drawSoftHeart(ix, iy, 0.85);
-      }
+      const ix = col * cell + 32;
+      const iy = row * cell + 32;
+      drawFrenchMedallion(ix, iy, 1.0);
+      drawFrenchMedallion(ix + cell * 0.5, iy + cell * 0.5, 0.86);
     }
   }
   const wallpaperBedroom = track(finalizeTexture(wpBedCanvas, maxAniso, 1, 1));
@@ -3674,35 +3729,39 @@ export function createProceduralTextures(renderer: THREE.WebGLRenderer): Procedu
     ctx.closePath();
     ctx.fill();
 
-    // Deep charcoal intersecting bar & circle
-    ctx.fillStyle = '#1d1a21';
+    // Warm cocoa-espresso intersecting bar & ring (replacing stark cold black)
+    ctx.fillStyle = '#4e372a';
     ctx.translate(290, 170);
     ctx.rotate(-0.42);
     ctx.fillRect(-160, -18, 320, 36);
     ctx.restore();
 
-    ctx.strokeStyle = '#1d1a21';
+    ctx.strokeStyle = '#523b2d';
     ctx.lineWidth = 9;
     ctx.beginPath();
     ctx.arc(356, 134, 68, 0, Math.PI * 2);
     ctx.stroke();
 
-    ctx.fillStyle = '#d99b26';
+    ctx.fillStyle = '#e0a53a';
     ctx.beginPath();
     ctx.arc(356, 134, 24, 0, Math.PI * 2);
     ctx.fill();
 
-    // Stenciled Constructivist typography banner
+    // Warm sepia-umber typography banner
     ctx.save();
     ctx.translate(256, 332);
     ctx.rotate(-0.05);
-    ctx.fillStyle = '#1d1a21';
+    ctx.fillStyle = '#523a2d';
     ctx.fillRect(-190, -20, 380, 38);
-    ctx.fillStyle = '#f2ead8';
+    ctx.fillStyle = '#f8efe0';
     ctx.font = 'bold 21px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('КОНСТРУКЦИЯ // PRESS № 09', 0, 6);
     ctx.restore();
+
+    // Cozy warm golden-parchment sunlit gallery wash (removes cold stark B&W contrast!)
+    ctx.fillStyle = 'rgba(248, 224, 194, 0.28)';
+    ctx.fillRect(0, 0, 512, 384);
 
     sofaArtworks.push(track(finalizeTexture(c, maxAniso)));
   }
@@ -3811,36 +3870,36 @@ export function createProceduralTextures(renderer: THREE.WebGLRenderer): Procedu
     return tex;
   };
 
-  // Artwork 1: Constructivist Geometric Paper-Cut Collage (构成主义拼贴画)
+  // Artwork 1: Constructivist Geometric Paper-Cut Collage (构成主义拼贴画 — 明暗柔和适配浅暖墙面)
   sofaArtworks.push(
     createHarmonizedGalleryPrint(
       '/assets/aistudio/IMG_20261121_192018_ec76c714.png',
       768,
       1024,
       {
-        baseHex: '#dbd0c5',
-        filter: 'saturate(0.70) brightness(0.84) contrast(0.90)',
-        multiplyGlaze: 'rgba(226, 212, 200, 0.42)',
-        warmWash: 'rgba(232, 219, 208, 0.09)',
-        vignetteAlpha: 0.14,
+        baseHex: '#ede6e0',
+        filter: 'saturate(0.76) brightness(0.98) contrast(0.86)',
+        multiplyGlaze: 'rgba(240, 232, 224, 0.18)',
+        warmWash: 'rgba(248, 241, 236, 0.16)',
+        vignetteAlpha: 0.06,
         fitMode: 'cover',
         pixelArt: false,
       }
     )
   );
 
-  // Artwork 2: Blue-Haired Pixel Anime Girl Print (蓝头发少女画作)
+  // Artwork 2: Blue-Haired Pixel Anime Girl Print (蓝头发少女画作 — 明暗柔和适配浅暖墙面)
   sofaArtworks.push(
     createHarmonizedGalleryPrint(
       '/assets/aistudio/IMG_20261121_192001_c418c726.jpg',
       768,
       1024,
       {
-        baseHex: '#cfc6c2',
-        filter: 'saturate(0.68) brightness(0.83) contrast(0.88)',
-        multiplyGlaze: 'rgba(224, 211, 204, 0.36)',
-        warmWash: 'rgba(234, 222, 214, 0.10)',
-        vignetteAlpha: 0.17,
+        baseHex: '#ebe4e0',
+        filter: 'saturate(0.74) brightness(0.97) contrast(0.85)',
+        multiplyGlaze: 'rgba(238, 230, 226, 0.16)',
+        warmWash: 'rgba(248, 242, 238, 0.16)',
+        vignetteAlpha: 0.07,
         fitMode: 'cover',
         pixelArt: true,
       }
@@ -3865,30 +3924,34 @@ export function createProceduralTextures(renderer: THREE.WebGLRenderer): Procedu
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = '#3f5e85';
+    ctx.fillStyle = '#5c7e74';
     ctx.beginPath();
     ctx.arc(265, 135, 68, 0, Math.PI * 2);
     ctx.fill();
 
-    // Surreal Watching Eye overlapping both geometric forms
-    ctx.fillStyle = '#f7f2e8';
-    ctx.strokeStyle = '#1f1b24';
+    // Warm sepia-lined Watching Eye overlapping warm terracotta & sage forms
+    ctx.fillStyle = '#faf3e6';
+    ctx.strokeStyle = '#543c2e';
     ctx.lineWidth = 5;
     ctx.beginPath();
     ctx.ellipse(210, 145, 72, 38, -0.12, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = '#d99f38';
+    ctx.fillStyle = '#e0a542';
     ctx.beginPath();
     ctx.arc(210, 145, 24, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = '#1f1b24';
+    ctx.fillStyle = '#543c2e';
     ctx.beginPath();
     ctx.arc(210, 145, 10, 0, Math.PI * 2);
     ctx.fill();
+
+    // Cozy warm sunlit apricot gallery glaze
+    ctx.fillStyle = 'rgba(248, 224, 194, 0.28)';
+    ctx.fillRect(0, 0, 384, 288);
 
     sofaArtworks.push(track(finalizeTexture(c, maxAniso)));
   }
@@ -3903,11 +3966,11 @@ export function createProceduralTextures(renderer: THREE.WebGLRenderer): Procedu
   doorBumpCanvas.height = 1024;
   const doorBumpCtx = doorBumpCanvas.getContext('2d')!;
 
-  // Smooth, balanced honey-oak base with very gentle continuous natural warmth (no dark horizontal splice bands)
+  // Smooth warm honey-apricot-oak door base matching the TV stand palette
   const doorBaseGrad = doorCtx.createLinearGradient(0, 0, 0, 1024);
-  doorBaseGrad.addColorStop(0.0, '#f4d7a2');
-  doorBaseGrad.addColorStop(0.5, '#eec98c');
-  doorBaseGrad.addColorStop(1.0, '#e6be7d');
+  doorBaseGrad.addColorStop(0.0, '#f3bb8c');
+  doorBaseGrad.addColorStop(0.5, '#e5a16e');
+  doorBaseGrad.addColorStop(1.0, '#d08656');
   doorCtx.fillStyle = doorBaseGrad;
   doorCtx.fillRect(0, 0, 512, 1024);
   doorBumpCtx.fillStyle = '#848484';
@@ -4313,17 +4376,55 @@ export function createProceduralTextures(renderer: THREE.WebGLRenderer): Procedu
     cbctx.fillRect(0, y, 512, 2);
   }
 
-  // Subtle woven botanical & geometric border near the bottom hem
-  curCtx.fillStyle = 'rgba(128, 112, 154, 0.22)';
-  curCtx.fillRect(0, 456, 512, 34);
-  curCtx.strokeStyle = 'rgba(255, 248, 238, 0.62)';
-  curCtx.lineWidth = 2.0;
+  // Tailored double-folded stitched bottom hem (折叠缝合折边, aligns with CURTAIN_HEM_V = 0.038)
+  const hemTopY = Math.round(512 * (1 - 0.038)); // y = 493
+  // Double-layer folded fabric subtle depth tint
+  curCtx.fillStyle = 'rgba(116, 104, 134, 0.14)';
+  curCtx.fillRect(0, hemTopY, 512, 512 - hemTopY);
+  // Crisp crease shadow along the top fold tuck
+  const hemShadow = curCtx.createLinearGradient(0, hemTopY - 4, 0, hemTopY + 5);
+  hemShadow.addColorStop(0.0, 'rgba(72, 60, 92, 0.0)');
+  hemShadow.addColorStop(0.45, 'rgba(72, 60, 92, 0.34)');
+  hemShadow.addColorStop(0.75, 'rgba(255, 252, 246, 0.28)');
+  hemShadow.addColorStop(1.0, 'rgba(255, 252, 246, 0.0)');
+  curCtx.fillStyle = hemShadow;
+  curCtx.fillRect(0, hemTopY - 4, 512, 9);
+  // Fine dashed running-stitch thread line (缝合针脚走线)
+  curCtx.save();
+  curCtx.strokeStyle = 'rgba(92, 80, 112, 0.42)';
+  curCtx.lineWidth = 1.4;
+  curCtx.setLineDash([5, 4]);
   curCtx.beginPath();
-  curCtx.moveTo(0, 458);
-  curCtx.lineTo(512, 458);
-  curCtx.moveTo(0, 488);
-  curCtx.lineTo(512, 488);
+  curCtx.moveTo(0, hemTopY + 3.5);
+  curCtx.lineTo(512, hemTopY + 3.5);
   curCtx.stroke();
+  curCtx.strokeStyle = 'rgba(255, 252, 246, 0.68)';
+  curCtx.lineWidth = 1.1;
+  curCtx.beginPath();
+  curCtx.moveTo(0, hemTopY + 2.3);
+  curCtx.lineTo(512, hemTopY + 2.3);
+  curCtx.stroke();
+  curCtx.restore();
+  // Soft highlight along the rounded bottom folded edge
+  curCtx.fillStyle = 'rgba(255, 252, 248, 0.34)';
+  curCtx.fillRect(0, 509, 512, 3);
+
+  // Matching bump relief for the folded hem ridge & indented stitch seam (shared by ALL curtains!)
+  cbctx.fillStyle = 'rgba(42, 42, 42, 0.65)';
+  cbctx.fillRect(0, hemTopY - 1, 512, 3);
+  cbctx.fillStyle = 'rgba(222, 222, 222, 0.48)';
+  cbctx.fillRect(0, hemTopY + 2, 512, 512 - hemTopY - 4);
+  cbctx.save();
+  cbctx.strokeStyle = 'rgba(248, 248, 248, 0.72)';
+  cbctx.lineWidth = 1.4;
+  cbctx.setLineDash([5, 4]);
+  cbctx.beginPath();
+  cbctx.moveTo(0, hemTopY + 3.5);
+  cbctx.lineTo(512, hemTopY + 3.5);
+  cbctx.stroke();
+  cbctx.restore();
+  cbctx.fillStyle = 'rgba(72, 72, 72, 0.45)';
+  cbctx.fillRect(0, 510, 512, 2);
 
   const curtainFabric = track(finalizeTexture(curCanvas, maxAniso, 1, 1));
   const curtainBump = track(finalizeTexture(curBumpCanvas, maxAniso, 1, 1, true));
@@ -4671,16 +4772,16 @@ export function createProceduralTextures(renderer: THREE.WebGLRenderer): Procedu
   gingCtx.fillRect(0, 0, 512, 512);
   const ginghamPillow = track(finalizeTexture(gingCanvas, maxAniso, 1, 1));
 
-  // 20d. Light-Green Linen Dining Tablecloth with Red & Dark-Green Small Floral Vine Pattern
+  // 20d. Crisp White Linen Dining Tablecloth with Red & Dark-Green Small Floral Vine Pattern
   const tcCanvas = document.createElement('canvas');
   tcCanvas.width = 512;
   tcCanvas.height = 512;
   const tcCtx = tcCanvas.getContext('2d')!;
-  tcCtx.fillStyle = '#d8efd2';
+  tcCtx.fillStyle = '#fcfbf8';
   tcCtx.fillRect(0, 0, 512, 512);
-  // Subtle natural woven cotton linen cross-hatch
+  // Subtle natural woven white cotton linen cross-hatch
   for (let i = 0; i < 512; i += 4) {
-    tcCtx.fillStyle = i % 8 === 0 ? 'rgba(248, 255, 245, 0.24)' : 'rgba(155, 198, 152, 0.13)';
+    tcCtx.fillStyle = i % 8 === 0 ? 'rgba(255, 255, 255, 0.34)' : 'rgba(222, 218, 210, 0.16)';
     tcCtx.fillRect(0, i, 512, 2);
     tcCtx.fillRect(i, 0, 2, 512);
   }

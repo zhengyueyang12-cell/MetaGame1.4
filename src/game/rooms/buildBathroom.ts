@@ -13,6 +13,7 @@ import {
   createWindowEmissiveMaterial,
 } from '../pipeline';
 import { mergeStaticGroupToSingleMesh } from '../SceneManager';
+import { apartmentColorStudio } from '../devColorStudio';
 import type { RoomBuildContext } from './roomContext';
 
 /**
@@ -1130,6 +1131,24 @@ export function buildBathroom(
     dimColorHex: 0x625078,
     proximityRadius: 3.4,
   });
+
+  // Register Bathroom shared materials into Global Persistent Color Studio (F8)
+  apartmentColorStudio.registerMaterialColor('ceiling', '全屋天花板', 'global', ceilingMat);
+  apartmentColorStudio.registerMaterialColor('bathTile', '浴室地砖/下墙砖', 'bathEntry', [
+    bathTileFloorMat,
+    bathLowerTileMat,
+  ]);
+  apartmentColorStudio.registerMaterialColor('bathUpperWall', '浴室上墙面', 'bathEntry', bathUpperWallMat);
+  apartmentColorStudio.registerMaterialColor('bathVanity', '浴室洗手台色', 'bathEntry', [
+    vanityBlueMat,
+    vanityTrimMat,
+  ]);
+  apartmentColorStudio.registerMaterialColor('bathCeramic', '浴室陶瓷洁具', 'bathEntry', ceramicWhiteMat);
+  apartmentColorStudio.registerMaterialColor('bathOak', '浴室木质家具', 'bathEntry', [
+    oakMat,
+    darkOakMat,
+  ]);
+  apartmentColorStudio.registerMaterialColor('bathTowel', '浴室毛巾织物', 'bathEntry', towelWhiteMat);
 
   // Merge all static Bathroom architecture & furniture into a single draw call!
   mergeStaticGroupToSingleMesh(group, outlines, 'BathroomMergedStaticMesh');

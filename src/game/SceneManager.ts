@@ -532,6 +532,10 @@ export class SceneManager {
     return this.visibleRooms.has(room);
   }
 
+  public getRoomGroups(): Map<RoomId, THREE.Group> {
+    return this.roomGroups;
+  }
+
   public getVisibleRooms(): RoomId[] {
     return Array.from(this.visibleRooms);
   }

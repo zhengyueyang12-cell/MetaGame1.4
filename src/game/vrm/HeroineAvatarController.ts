@@ -455,6 +455,10 @@ export class HeroineAvatarController {
   private speakPhase = 0;
   private gestureElapsed = 0;
   private standingGestureBlend = 0;
+  private lastRenderedPostureState: HeroinePostureState = 'seated';
+  private lastRenderedGesture: HeroineGesture = 'idle';
+  private lastRenderedWalkStyle: 'normal' | 'arms_crossed' = 'normal';
+  private lastRenderedGlancing = false;
   private lipSyncExprNames: Record<'aa' | 'ih' | 'ou' | 'ee' | 'oh', string[]> = {
     aa: ['aa'],
     ih: ['ih'],
@@ -1257,6 +1261,8 @@ export class HeroineAvatarController {
   public setPerformanceCue(cue: HeroinePerformanceCue): void {
     if (cue.gesture !== this.activePerformance.gesture) {
       this.gestureElapsed = 0;
+      // Smooth bone-level SLERP cross-fade whenever switching dialogue gestures (eliminates 1-frame arm snaps!)
+      this.triggerPoseCrossFade(0.44);
     }
     if (cue.expression === 'wink') {
       // Trigger a crisp one-shot single-eye wink pulse that opens cleanly back to both eyes open
@@ -1866,23 +1872,33 @@ export class HeroineAvatarController {
     this.transitionDuration = 0;
   }
 
+  /**
+   * Snapshots the exact post-blend visual pose from the previous frame and smoothly SLERPs into
+   * the incoming pose over `duration` seconds — works even within the same pose driver (e.g.
+   * switching between layered dialogue gestures or transitioning out of greeting_wave).
+   */
+  private triggerPoseCrossFade(duration = 0.42): void {
+    if (!this.hasLastCommittedPose || duration <= 0.01) return;
+    this.lastCommittedQuats.forEach((q, boneName) => {
+      let dst = this.transitionFromQuats.get(boneName);
+      if (!dst) {
+        dst = new THREE.Quaternion();
+        this.transitionFromQuats.set(boneName, dst);
+      }
+      dst.copy(q);
+    });
+    this.transitionFromHipsPos.copy(this.lastCommittedHipsPos);
+    this.transitionElapsed = 0;
+    this.transitionDuration = duration;
+  }
+
   private beginPoseDriverTransition(
     nextDriver: HeroinePoseDriver,
-    duration = 0.34
+    duration = 0.38
   ): void {
     if (nextDriver === this.activePoseDriver) return;
     if (this.hasLastCommittedPose && this.activePoseDriver !== 'none' && duration > 0.01) {
-      this.lastCommittedQuats.forEach((q, boneName) => {
-        let dst = this.transitionFromQuats.get(boneName);
-        if (!dst) {
-          dst = new THREE.Quaternion();
-          this.transitionFromQuats.set(boneName, dst);
-        }
-        dst.copy(q);
-      });
-      this.transitionFromHipsPos.copy(this.lastCommittedHipsPos);
-      this.transitionElapsed = 0;
-      this.transitionDuration = duration;
+      this.triggerPoseCrossFade(duration);
     } else {
       this.transitionElapsed = 0;
       this.transitionDuration = 0;
@@ -1901,7 +1917,8 @@ export class HeroineAvatarController {
         0,
         1
       );
-      const ease = rawT * rawT * (3 - 2 * rawT);
+      // Quintic smootherstep (zero velocity & zero acceleration at endpoints -> organic ease-in-out)
+      const ease = rawT * rawT * rawT * (rawT * (rawT * 6 - 15) + 10);
 
       for (let i = 0; i < boneNames.length; i++) {
         const boneName = boneNames[i];
@@ -1909,7 +1926,11 @@ export class HeroineAvatarController {
         const node = vrm.humanoid.getNormalizedBoneNode(boneName);
         const fromQuat = this.transitionFromQuats.get(boneName);
         if (node && fromQuat) {
-          node.quaternion.slerpQuaternions(fromQuat, node.quaternion, ease);
+          // CRITICAL: THREE.Quaternion.slerpQuaternions(qa, qb, t) does `this.copy(qa).slerp(qb, t)`.
+          // Passing `node.quaternion` as `qb` overwrites `qb` with `qa` before slerping, freezing the bone!
+          // Always copy the target quaternion into `_blendQuatB` first!
+          _blendQuatB.copy(node.quaternion);
+          node.quaternion.slerpQuaternions(fromQuat, _blendQuatB, ease);
         }
       }
 
@@ -1920,6 +1941,19 @@ export class HeroineAvatarController {
 
       if (rawT >= 1) {
         this.transitionDuration = 0;
+      }
+    } else if (this.hasLastCommittedPose && !this.poseTuner) {
+      // Continuous safety per-bone SLERP damper prevents ANY 1-frame micro-snaps (e.g. finger switches or clip starts)
+      const contAlpha = 1 - Math.exp(-24.0 * dt);
+      for (let i = 0; i < boneNames.length; i++) {
+        const boneName = boneNames[i];
+        if (HEAD_TRACKED_BONES.has(boneName)) continue;
+        const node = vrm.humanoid.getNormalizedBoneNode(boneName);
+        const prevQuat = this.lastCommittedQuats.get(boneName);
+        if (node && prevQuat) {
+          _blendQuatB.copy(node.quaternion);
+          node.quaternion.slerpQuaternions(prevQuat, _blendQuatB, contAlpha);
+        }
       }
     }
 
@@ -3345,7 +3379,7 @@ export class HeroineAvatarController {
     }
 
     if (enteringMixamo) {
-      this.beginPoseDriverTransition('mixamo', isMoving ? 0.22 : 0.30);
+      this.beginPoseDriverTransition('mixamo', isMoving ? 0.42 : 0.46);
       // Start Mixamo immediately at full normalized weight (1.0) so our bone-level SLERP
       // blends cleanly from the previous pose with zero T-pose intermediate frames.
       if (hasIdle && hasWalk) {
@@ -3360,7 +3394,7 @@ export class HeroineAvatarController {
       }
     } else if (hasIdle && hasWalk) {
       const targetWalk = isMoving ? 1.0 : 0.0;
-      let nextWalk = THREE.MathUtils.damp(this.actionWeights.walk, targetWalk, 10.5, dt);
+      let nextWalk = THREE.MathUtils.damp(this.actionWeights.walk, targetWalk, 6.8, dt);
       if (nextWalk < 0.002) nextWalk = 0;
       else if (nextWalk > 0.998) nextWalk = 1;
       this.actionWeights.walk = nextWalk;
@@ -3536,7 +3570,7 @@ export class HeroineAvatarController {
     this.standingGestureBlend = THREE.MathUtils.damp(
       this.standingGestureBlend,
       targetBlend,
-      targetBlend > this.standingGestureBlend ? 6.2 : 4.2,
+      targetBlend > this.standingGestureBlend ? 4.8 : 3.4,
       dt
     );
     if (this.standingGestureBlend < 0.004) this.standingGestureBlend = 0;
@@ -5473,6 +5507,7 @@ export class HeroineAvatarController {
         // If already comfortably close (~< 0.94m from goal or player within ~1.65m), transition
         // smoothly into in-place greeting_wave with both feet planted instead of a micro-slide step!
         if (distToGoal < 0.94 || (distToPlayerFeet >= 0.85 && distToPlayerFeet < 1.65)) {
+          this.triggerPoseCrossFade(0.42);
           this.postureState = 'greeting_wave';
           this.greetingWaveElapsed = 0;
           this.greetingWaveDuration = 2.15;
@@ -5540,6 +5575,7 @@ export class HeroineAvatarController {
       if (arrived || distGoal <= 0.16) {
         this.root.position.y = 0;
         // Transition seamlessly into gentle greeting_wave without clearing smoothed bones!
+        this.triggerPoseCrossFade(0.42);
         this.postureState = 'greeting_wave';
         this.greetingWaveElapsed = 0;
         this.greetingWaveDuration = 2.15;
@@ -5628,6 +5664,7 @@ export class HeroineAvatarController {
       }
 
       if (this.greetingWaveElapsed >= this.greetingWaveDuration) {
+        this.triggerPoseCrossFade(0.46);
         this.postureState = 'standing_talking';
         this.gestureElapsed = 0;
         this.standingGestureBlend = 0;
@@ -5675,8 +5712,8 @@ export class HeroineAvatarController {
           this.applyLayeredDialogueOnIdle(this.vrm, safeDt, elapsed);
         } else {
           if (this.activePoseDriver !== 'procedural_standing') {
-            this.beginPoseDriverTransition('procedural_standing', 0.34);
-            this.smoothedBoneEuler.clear();
+            this.beginPoseDriverTransition('procedural_standing', 0.42);
+            this.seedSmoothedBonesToIdle();
             this.zeroLocomotionMixerWeights();
           }
           this.applyStandingGesturePose(this.vrm, safeDt, elapsed);
@@ -5685,8 +5722,8 @@ export class HeroineAvatarController {
         const animSpeed = Math.max(actualSpeed, 0.42);
         if (!this.applyMixamoLocomotion(this.vrm, safeDt, true, animSpeed)) {
           if (this.activePoseDriver !== 'procedural_walk') {
-            this.beginPoseDriverTransition('procedural_walk', 0.28);
-            this.smoothedBoneEuler.clear();
+            this.beginPoseDriverTransition('procedural_walk', 0.36);
+            this.seedSmoothedBonesToIdle();
             this.zeroLocomotionMixerWeights();
           }
           this.walkPhase += safeDt * animSpeed * 6.4;
@@ -6214,7 +6251,23 @@ export class HeroineAvatarController {
       safeDt > 1e-4 ? shortestAngleDelta(prevRootYaw, this.root.rotation.y) / safeDt : 0;
     this.applyTurnInPlaceFootwork(this.vrm, safeDt, actualYawRate);
 
-    // 1.5 Apply universal bone-level quaternion SLERP across pose-driver switches & record baseline
+    // 1.5 Automatically trigger smooth 0.50s bone-level cross-fade on ANY posture/gesture/walk-style/glance change,
+    //     then apply universal SLERP blending & record the visual baseline for the next frame!
+    const isGlancingNow = this.roomGlanceRemaining > 0;
+    if (
+      !this.poseTuner &&
+      this.hasLastCommittedPose &&
+      (this.postureState !== this.lastRenderedPostureState ||
+        this.activePerformance.gesture !== this.lastRenderedGesture ||
+        this.walkUpperBodyStyle !== this.lastRenderedWalkStyle ||
+        isGlancingNow !== this.lastRenderedGlancing)
+    ) {
+      this.triggerPoseCrossFade(0.50);
+    }
+    this.lastRenderedPostureState = this.postureState;
+    this.lastRenderedGesture = this.activePerformance.gesture;
+    this.lastRenderedWalkStyle = this.walkUpperBodyStyle;
+    this.lastRenderedGlancing = isGlancingNow;
     this.applyAndRecordPoseTransition(this.vrm, safeDt);
 
     // 2. Drive logical VRM LookAt eye tracking + clamped head/neck follow (or Pose Tuner head sliders)

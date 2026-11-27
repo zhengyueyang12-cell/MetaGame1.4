@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {
   createBeveledBox,
   createBeveledSlab,
+  createButterflyCurtainGeometry,
   createCopperKnobGeometry,
   createCraftedCabinetFront,
   createCurvedChairBackrestGeometry,
@@ -23,6 +24,7 @@ import {
   createWindowGoboShaderMaterial,
 } from '../pipeline';
 import { mergeStaticGroupToSingleMesh } from '../SceneManager';
+import { apartmentColorStudio } from '../devColorStudio';
 import {
   createTabletopPenSet,
   createTabletopTrinketCluster,
@@ -699,30 +701,107 @@ export function buildDiningAndKitchen(ctx: RoomBuildContext): void {
   });
 
   // =========================================================================
-  // 2. 4 SCULPTED DINING CHAIRS (Scaled 1.04x, Curved Wrap Backrest + Dark Ink-Green Cushions!)
+  // 2. 4 HIGH-CRAFT SCULPTED DINING CHAIRS (Curved Wrap Backrest + Matte Oiled Solid Oak + Woven Wool-Linen Cushion, ZERO Plastic Look!)
   // =========================================================================
+  // Dedicated high-resolution hand-rubbed matte oiled oak wood texture & bump (告别塑料感!)
+  const chairWoodTex = (() => {
+    const W = 512;
+    const H = 512;
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const ctx2d = c.getContext('2d')!;
+    const bc = document.createElement('canvas');
+    bc.width = W;
+    bc.height = H;
+    const bctx = bc.getContext('2d')!;
+
+    const base = ctx2d.createLinearGradient(0, 0, W, H);
+    base.addColorStop(0.0, '#d8a87e');
+    base.addColorStop(0.5, '#cc986d');
+    base.addColorStop(1.0, '#c28d62');
+    ctx2d.fillStyle = base;
+    ctx2d.fillRect(0, 0, W, H);
+    bctx.fillStyle = '#808080';
+    bctx.fillRect(0, 0, W, H);
+
+    // Rich organic oak grain bands & fine medullary wood pores
+    for (let x = 0; x < W; x += 2) {
+      const wave = Math.sin((x / W) * Math.PI * 14) * 0.5 + Math.sin((x / W) * Math.PI * 34 + 1.1) * 0.25;
+      ctx2d.fillStyle =
+        wave > 0
+          ? `rgba(248, 224, 196, ${(wave * 0.14).toFixed(3)})`
+          : `rgba(88, 52, 28, ${(-wave * 0.18).toFixed(3)})`;
+      ctx2d.fillRect(x, 0, 2, H);
+      const bv = Math.round(128 + wave * 36);
+      bctx.fillStyle = `rgb(${bv},${bv},${bv})`;
+      bctx.fillRect(x, 0, 2, H);
+    }
+    for (let i = 0; i < 2600; i++) {
+      const px = (i * 197 + 19) % W;
+      const py = (i * 331 + 23) % H;
+      ctx2d.fillStyle = i % 2 === 0 ? 'rgba(72, 42, 22, 0.11)' : 'rgba(250, 232, 206, 0.06)';
+      ctx2d.fillRect(px, py, 1.5, 8 + (i % 9));
+      bctx.fillStyle = i % 2 === 0 ? 'rgba(54, 54, 54, 0.35)' : 'rgba(198, 198, 198, 0.22)';
+      bctx.fillRect(px, py, 1.5, 8 + (i % 9));
+    }
+
+    const map = new THREE.CanvasTexture(c);
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.wrapS = THREE.RepeatWrapping;
+    map.wrapT = THREE.RepeatWrapping;
+    map.anisotropy = 4;
+    const bumpMap = new THREE.CanvasTexture(bc);
+    bumpMap.wrapS = THREE.RepeatWrapping;
+    bumpMap.wrapT = THREE.RepeatWrapping;
+    return { map, bumpMap };
+  })();
+
+  const chairOiledOakMat = mat({
+    map: chairWoodTex.map,
+    bumpMap: chairWoodTex.bumpMap,
+    bumpScale: 0.012,
+    color: 0xffffff,
+    roughness: 0.80, // Matte hand-rubbed oiled oak — ZERO plastic glare!
+    metalness: 0.0,
+    woodLacquer: 0.08,
+    celStrength: 0.44,
+  });
+
+  // Rich tactile woven moss-green linen-wool seat cushion (high roughness, real weave bump!)
+  const chairWovenCushionMat = mat({
+    map: textures.rugWeave,
+    bumpMap: textures.plushBump,
+    bumpScale: 0.020,
+    color: 0x677e48,
+    roughness: 0.95,
+    metalness: 0.0,
+    rimScale: 1.24,
+    celStrength: 0.42,
+  });
+
   const chairSeatGeo = createPlushBox(0.42, 0.044, 0.42, 0.022, 0.08);
   const chairFrameGeo = createBeveledSlab(0.44, 0.026, 0.44, 0.032, 0.007);
   const chairBackGeo = createCurvedChairBackrestGeometry(0.45, 0.148, 0.026, 0.068, 20);
   const chairSpindleGeo = new THREE.CylinderGeometry(0.0095, 0.0115, 0.35, 10);
   const chairLegGeo = createTurnedLegGeometry(0.018, 0.0115, 0.44);
 
-  const chairFramesInst = new THREE.InstancedMesh(chairFrameGeo, oakMat, 4);
+  const chairFramesInst = new THREE.InstancedMesh(chairFrameGeo, chairOiledOakMat, 4);
   chairFramesInst.castShadow = true;
   chairFramesInst.receiveShadow = true;
 
-  const chairCushionsInst = new THREE.InstancedMesh(chairSeatGeo, grassGreenCushionMat, 4);
+  const chairCushionsInst = new THREE.InstancedMesh(chairSeatGeo, chairWovenCushionMat, 4);
   chairCushionsInst.castShadow = true;
   chairCushionsInst.receiveShadow = true;
 
-  const chairBackRailsInst = new THREE.InstancedMesh(chairBackGeo, oakMat, 4);
+  const chairBackRailsInst = new THREE.InstancedMesh(chairBackGeo, chairOiledOakMat, 4);
   chairBackRailsInst.castShadow = true;
   chairBackRailsInst.receiveShadow = true;
 
-  const chairSpindlesInst = new THREE.InstancedMesh(chairSpindleGeo, oakMat, 20);
+  const chairSpindlesInst = new THREE.InstancedMesh(chairSpindleGeo, chairOiledOakMat, 20);
   chairSpindlesInst.castShadow = true;
 
-  const chairLegsInst = new THREE.InstancedMesh(chairLegGeo, oakMat, 16);
+  const chairLegsInst = new THREE.InstancedMesh(chairLegGeo, chairOiledOakMat, 16);
   chairLegsInst.castShadow = true;
 
   const chairOffsets: [number, number, number][] = [
@@ -746,7 +825,6 @@ export function buildDiningAndKitchen(ctx: RoomBuildContext): void {
     _instScale.set(DINING_CHAIR_SCALE, DINING_CHAIR_SCALE, DINING_CHAIR_SCALE);
     _parentMat.compose(_instPos, _instQuat, _instScale);
 
-    // 1) Base wood frame
     setInstanceTransform(
       chairFramesInst,
       cIdx,
@@ -761,7 +839,6 @@ export function buildDiningAndKitchen(ctx: RoomBuildContext): void {
       DINING_CHAIR_SCALE
     );
 
-    // 2) Dark ink-green plush seat cushion
     setInstanceTransform(
       chairCushionsInst,
       cIdx,
@@ -776,7 +853,6 @@ export function buildDiningAndKitchen(ctx: RoomBuildContext): void {
       DINING_CHAIR_SCALE
     );
 
-    // 3) Curved ergonomic wrap-around wooden backrest rail (local 0, 0.825, -0.195)
     _instPos.set(0, 0.825, -0.195);
     _instEuler.set(-0.07, 0, 0);
     _instQuat.setFromEuler(_instEuler);
@@ -785,7 +861,6 @@ export function buildDiningAndKitchen(ctx: RoomBuildContext): void {
     _instMat.multiplyMatrices(_parentMat, _localMat);
     chairBackRailsInst.setMatrixAt(cIdx, _instMat);
 
-    // 4) 5 Arched spindles following the curved backrest arc
     const spindleXs = [-0.175, -0.088, 0, 0.088, 0.175];
     for (const sx of spindleXs) {
       const u = sx / 0.225;
@@ -798,7 +873,6 @@ export function buildDiningAndKitchen(ctx: RoomBuildContext): void {
       chairSpindlesInst.setMatrixAt(spindleIdx++, _instMat);
     }
 
-    // 5) 4 Splayed legs per chair
     for (const [lx, lz] of [
       [-0.16, -0.16],
       [0.16, -0.16],
@@ -828,11 +902,13 @@ export function buildDiningAndKitchen(ctx: RoomBuildContext): void {
   finalizeInstancedMesh(chairSpindlesInst);
   finalizeInstancedMesh(chairLegsInst);
 
-  diningGroup.add(chairFramesInst);
-  diningGroup.add(chairCushionsInst);
-  diningGroup.add(chairBackRailsInst);
-  diningGroup.add(chairSpindlesInst);
-  diningGroup.add(chairLegsInst);
+  diningGroup.add(
+    chairFramesInst,
+    chairCushionsInst,
+    chairBackRailsInst,
+    chairSpindlesInst,
+    chairLegsInst
+  );
 
   // =========================================================================
   // 3. INDUSTRIAL BRUSHED-SILVER DOME PENDANT LAMPS (Dining + Kitchen Island, Screenshot 1!)
@@ -946,93 +1022,179 @@ export function buildDiningAndKitchen(ctx: RoomBuildContext): void {
   });
 
   // =========================================================================
-  // 4. DINING SOUTH SIDEBOARD BUFFET (Two-Tone Wood + White Drawers with Raised Molding Lines!)
+  // 4. AMERICAN SIDEBOARD MATCHING LIVING ROOM FURNITURE (参考客厅美式餐边柜：齐平直角框 + 上三抽弧形拉环 + 下中空冷灰玻璃双格门!)
   // =========================================================================
   const sideboard = new THREE.Group();
   sideboard.position.set(0.32, 0, 6.38);
 
-  const sbTop = new THREE.Mesh(
-    createBeveledSlab(1.76, 0.028, 0.48, 0.030, 0.008),
-    oakMat
-  );
-  sbTop.position.y = 0.848;
-  sbTop.castShadow = true;
-  outlines.addOutline(sbTop, 1.015);
-  sideboard.add(sbTop);
-
-  const sbBody = new THREE.Mesh(
-    createBeveledBox(1.68, 0.65, 0.44, 0.012, 2),
-    oakMat
-  );
-  sbBody.position.y = 0.495;
-  sbBody.castShadow = true;
-  sbBody.receiveShadow = true;
-  sideboard.add(sbBody);
-
-  // Two-Tone Slate-Blue Panel Material matching MiSide Screenshot 2's sideboard & clock
-  const slateBluePanelMat = mat({
-    map: textures.furnitureOak,
-    bumpMap: textures.furnitureWoodBump,
-    bumpScale: 0.004,
-    color: 0x6282ad,
-    roughness: 0.42,
-    metalness: 0.04,
-    woodLacquer: 0.48,
+  const sbBronzeMat = mat({ color: 0x4c3a2d, roughness: 0.34, metalness: 0.78 });
+  const sbBrassMat = mat({ color: 0xdcb46c, roughness: 0.36, metalness: 0.70 });
+  const sbGlassMat = new THREE.MeshPhysicalMaterial({
+    color: 0x708090,
+    roughness: 0.06,
+    metalness: 0.14,
+    transparent: true,
+    opacity: 0.34,
+    depthWrite: false,
   });
 
-  // Upper row of 3 Two-Tone Slate-Blue & Oak Drawer Boxes with Raised Molding Lines (蓝白木拼色抽屉)
-  const sbPositions = [-0.54, 0, 0.54];
-  for (let i = 0; i < sbPositions.length; i++) {
-    const dx = sbPositions[i];
-    const topDrawer = createMoldedDrawerFront(
-      0.50,
-      0.16,
-      0.028,
-      'z',
-      i === 1 ? woodPanelMat : slateBluePanelMat,
-      oakMat,
-      steelMat,
-      -1
-    );
-    topDrawer.position.set(dx, 0.71, -0.225);
-    sideboard.add(topDrawer);
+  // Helper: Flush 90° flat-recessed Shaker drawer/door front facing -Z (matching Living Room sideboard!)
+  const buildDiningShakerFront = (w: number, h: number, style: 'bail' | 'ring'): THREE.Group => {
+    const g = new THREE.Group();
+    const back = new THREE.Mesh(new THREE.BoxGeometry(w - 0.004, h - 0.004, 0.012), darkWoodMat);
+    back.position.z = 0.004;
+    g.add(back);
+    const rH = Math.min(0.028, h * 0.20);
+    const sW = Math.min(0.038, w * 0.12);
+    for (const ry of [-(h - rH) * 0.5, (h - rH) * 0.5]) {
+      const r = new THREE.Mesh(new THREE.BoxGeometry(w, rH, 0.018), oakMat);
+      r.position.set(0, ry, -0.001);
+      g.add(r);
+    }
+    for (const sx of [-(w - sW) * 0.5, (w - sW) * 0.5]) {
+      const st = new THREE.Mesh(new THREE.BoxGeometry(sW, h, 0.018), oakMat);
+      st.position.set(sx, 0, -0.001);
+      g.add(st);
+    }
+    if (style === 'bail') {
+      const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(-0.036, 0.006, -0.010),
+        new THREE.Vector3(-0.020, -0.012, -0.018),
+        new THREE.Vector3(0, -0.016, -0.020),
+        new THREE.Vector3(0.020, -0.012, -0.018),
+        new THREE.Vector3(0.036, 0.006, -0.010),
+      ]);
+      const bail = new THREE.Mesh(new THREE.TubeGeometry(curve, 14, 0.0036, 8, false), sbBronzeMat);
+      g.add(bail);
+    } else {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.015, 0.0034, 8, 14), sbBrassMat);
+      ring.position.set(0, -0.004, -0.012);
+      g.add(ring);
+    }
+    return g;
+  };
 
-    // Interactive lower cupboard doors in two-tone slate-blue & oak frames
-    const hingeSide: -1 | 1 = dx <= 0 ? -1 : 1;
+  // Single clean solid-wood back panel + top drawer deck + hollow center display cavity with shelf!
+  const sbBack = new THREE.Mesh(new THREE.BoxGeometry(1.68, 0.70, 0.020), darkWoodMat);
+  sbBack.position.set(0, 0.48, 0.21);
+  sideboard.add(sbBack);
+  const sbTopDeck = new THREE.Mesh(new THREE.BoxGeometry(1.64, 0.16, 0.42), darkWoodMat);
+  sbTopDeck.position.set(0, 0.74, 0);
+  sideboard.add(sbTopDeck);
+  const sbFloor = new THREE.Mesh(new THREE.BoxGeometry(1.64, 0.020, 0.42), darkWoodMat);
+  sbFloor.position.set(0, 0.145, 0);
+  sideboard.add(sbFloor);
+  for (const dx of [-0.42, 0.42]) {
+    const div = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.52, 0.41), oakMat);
+    div.position.set(dx, 0.405, 0);
+    sideboard.add(div);
+  }
+  const sbShelf = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.018, 0.37), oakMat);
+  sbShelf.position.set(0, 0.40, 0.01);
+  sideboard.add(sbShelf);
+
+  // Crisp sharp-edged 3-step American crown top & stepped base plinth
+  const sbTop = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.030, 0.50), oakMat);
+  sbTop.position.y = 0.855;
+  sbTop.castShadow = true;
+  sbTop.receiveShadow = true;
+  sideboard.add(sbTop);
+  const sbCrownCove = new THREE.Mesh(new THREE.BoxGeometry(1.73, 0.018, 0.47), darkWoodMat);
+  sbCrownCove.position.y = 0.831;
+  sideboard.add(sbCrownCove);
+
+  const sbPlinth = new THREE.Mesh(new THREE.BoxGeometry(1.74, 0.026, 0.48), oakMat);
+  sbPlinth.position.y = 0.125;
+  sbPlinth.castShadow = true;
+  sideboard.add(sbPlinth);
+  const sbPlinthSkirt = new THREE.Mesh(new THREE.BoxGeometry(1.70, 0.018, 0.45), darkWoodMat);
+  sbPlinthSkirt.position.y = 0.102;
+  sideboard.add(sbPlinthSkirt);
+
+  for (const sx of [-0.83, 0.83]) {
+    const sideW = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.70, 0.44), oakMat);
+    sideW.position.set(sx, 0.48, 0);
+    sideboard.add(sideW);
+  }
+
+  // Top 3 Flush Drawers (Left narrow + Center wide + Right narrow) with Antique-Bronze Bail Drop-Pulls
+  for (const [dx, dw] of [
+    [-0.61, 0.36],
+    [0, 0.78],
+    [0.61, 0.36],
+  ] as const) {
+    const drw = buildDiningShakerFront(dw, 0.145, 'bail');
+    drw.position.set(dx, 0.742, -0.215);
+    sideboard.add(drw);
+  }
+
+  // Lower Row: Outer Solid Flush-Framed Interactive Doors + Center Twin Cool-Gray Glass Mullioned Doors!
+  for (const [idx, dx] of [
+    [0, -0.61],
+    [2, 0.61],
+  ] as const) {
+    const hingeSide: -1 | 1 = dx < 0 ? -1 : 1;
+    const customDoor = buildDiningShakerFront(0.36, 0.49, 'ring');
     registerCabinetDoor({
-      id: `din_sideboard_door_${i}`,
-      label: i === 0 ? '餐边柜左柜门' : i === 1 ? '餐边柜中柜门' : '餐边柜右柜门',
+      id: `din_sideboard_door_${idx}`,
+      label: idx === 0 ? '餐边柜左柜门' : '餐边柜右柜门',
       room: 'dining',
       parent: sideboard,
       centerX: dx,
-      centerY: 0.405,
-      centerZ: -0.225,
-      width: 0.50,
-      height: 0.39,
-      thickness: 0.028,
+      centerY: 0.402,
+      centerZ: -0.215,
+      width: 0.36,
+      height: 0.49,
+      thickness: 0.020,
       facingAxis: 'z',
       facingSign: -1,
       hingeSide,
       openSign: (-hingeSide) as -1 | 1,
-      doorMat: i === 1 ? slateBluePanelMat : woodPanelMat,
+      doorMat: darkWoodMat,
       moldingMat: oakMat,
-      handleMat: steelMat,
+      handleMat: sbBronzeMat,
+      customDoorGroup: customDoor,
     });
   }
+  for (const gx of [-0.20, 0.20]) {
+    const gDoor = new THREE.Group();
+    gDoor.position.set(gx, 0.402, -0.215);
+    const dw = 0.38;
+    const dh = 0.49;
+    const fW = 0.036;
+    for (const ry of [-(dh - fW) * 0.5, (dh - fW) * 0.5]) {
+      const r = new THREE.Mesh(new THREE.BoxGeometry(dw, fW, 0.018), oakMat);
+      r.position.set(0, ry, -0.001);
+      gDoor.add(r);
+    }
+    for (const sx of [-(dw - fW) * 0.5, (dw - fW) * 0.5]) {
+      const st = new THREE.Mesh(new THREE.BoxGeometry(fW, dh, 0.018), oakMat);
+      st.position.set(sx, 0, -0.001);
+      gDoor.add(st);
+    }
+    const pane = new THREE.Mesh(new THREE.BoxGeometry(dw - fW * 1.8, dh - fW * 1.8, 0.005), sbGlassMat);
+    gDoor.add(pane);
+    const vBar = new THREE.Mesh(new THREE.BoxGeometry(0.011, dh - fW * 1.8, 0.010), oakMat);
+    vBar.position.z = -0.003;
+    gDoor.add(vBar);
+    for (const hy of [-0.072, 0.072]) {
+      const hBar = new THREE.Mesh(new THREE.BoxGeometry(dw - fW * 1.8, 0.011, 0.010), oakMat);
+      hBar.position.set(0, hy, -0.003);
+      gDoor.add(hBar);
+    }
+    const gKnob = new THREE.Mesh(new THREE.CylinderGeometry(0.010, 0.008, 0.014, 8), sbBronzeMat);
+    gKnob.rotation.x = Math.PI / 2;
+    gKnob.position.set(gx < 0 ? 0.155 : -0.155, 0.01, -0.014);
+    gDoor.add(gKnob);
+    sideboard.add(gDoor);
+  }
 
-  const sbLegGeo = createTurnedLegGeometry(0.020, 0.012, 0.165);
-  for (const lx of [-0.74, 0.74]) {
-    for (const lz of [-0.16, 0.16]) {
-      const leg = createSplayedLegMesh(
-        sbLegGeo,
-        darkWoodMat,
-        lx,
-        0.16,
-        lz,
-        0.165,
-        0.14,
-        0.10
-      );
+  const sbLegGeo = createTurnedLegGeometry(0.030, 0.016, 0.095);
+  for (const lx of [-0.76, 0.76]) {
+    for (const lz of [-0.18, 0.18]) {
+      const leg = new THREE.Mesh(sbLegGeo, darkWoodMat);
+      leg.position.set(lx, 0.048, lz);
+      leg.castShadow = true;
       sideboard.add(leg);
     }
   }
@@ -1262,21 +1424,89 @@ export function buildDiningAndKitchen(ctx: RoomBuildContext): void {
   }
   diningGroup.add(wallLedgeGroup);
 
+  // Wooden-Framed Square Wall Clock on Dining South Wall (木框方形挂钟, keeping live 3D ticking hands!)
+  const dinSquareClockFaceTex = (() => {
+    const S = 384;
+    const c = document.createElement('canvas');
+    c.width = S;
+    c.height = S;
+    const ctx2d = c.getContext('2d')!;
+
+    ctx2d.fillStyle = '#faf4e6';
+    ctx2d.fillRect(0, 0, S, S);
+    ctx2d.strokeStyle = '#4a3525';
+    ctx2d.lineWidth = 3.5;
+    ctx2d.strokeRect(26, 26, S - 52, S - 52);
+    ctx2d.lineWidth = 1.6;
+    ctx2d.strokeRect(36, 36, S - 72, S - 72);
+
+    const halfSpan = S * 0.5 - 26;
+    const innerSpan = S * 0.5 - 36;
+    for (let m = 0; m < 60; m++) {
+      const ang = (m / 60) * Math.PI * 2 - Math.PI * 0.5;
+      const dx = Math.cos(ang);
+      const dy = Math.sin(ang);
+      const scaleOut = halfSpan / Math.max(Math.abs(dx), Math.abs(dy));
+      const scaleIn = (m % 5 === 0 ? innerSpan - 5 : innerSpan) / Math.max(Math.abs(dx), Math.abs(dy));
+      ctx2d.strokeStyle = m % 5 === 0 ? '#3a2618' : 'rgba(74, 53, 37, 0.50)';
+      ctx2d.lineWidth = m % 5 === 0 ? 3.4 : 1.4;
+      ctx2d.beginPath();
+      ctx2d.moveTo(S * 0.5 + dx * scaleIn, S * 0.5 + dy * scaleIn);
+      ctx2d.lineTo(S * 0.5 + dx * scaleOut, S * 0.5 + dy * scaleOut);
+      ctx2d.stroke();
+    }
+
+    ctx2d.fillStyle = '#382417';
+    ctx2d.font = 'bold 32px Georgia, serif';
+    ctx2d.textAlign = 'center';
+    ctx2d.textBaseline = 'middle';
+    const numSpan = S * 0.5 - 66;
+    for (let h = 1; h <= 12; h++) {
+      const ang = (h / 12) * Math.PI * 2 - Math.PI * 0.5;
+      const dx = Math.cos(ang);
+      const dy = Math.sin(ang);
+      const rSq = numSpan / Math.max(Math.abs(dx), Math.abs(dy));
+      ctx2d.fillText(String(h), S * 0.5 + dx * rSq * 0.94, S * 0.5 + dy * rSq * 0.94 + 2);
+    }
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    return tex;
+  })();
+
   const dinClockGroup = new THREE.Group();
   dinClockGroup.position.set(-1.05, 2.04, 6.60);
-  const dinClockRim = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.16, 0.16, 0.036, 24),
-    slateBluePanelMat
+  const dinClockBack = new THREE.Mesh(
+    createBeveledBox(0.30, 0.30, 0.032, 0.006, 2),
+    darkWoodMat
   );
-  dinClockRim.rotation.x = Math.PI / 2;
-  dinClockRim.castShadow = true;
-  outlines.addOutline(dinClockRim, 1.03);
-  dinClockGroup.add(dinClockRim);
+  dinClockBack.castShadow = true;
+  dinClockGroup.add(dinClockBack);
+
+  const dinFrameSize = 0.325;
+  const dinBarW = 0.038;
+  for (const fy of [-dinFrameSize * 0.5 + dinBarW * 0.5, dinFrameSize * 0.5 - dinBarW * 0.5]) {
+    const hBar = new THREE.Mesh(createBeveledBox(dinFrameSize, dinBarW, 0.040, 0.006, 2), oakMat);
+    hBar.position.set(0, fy, -0.004);
+    hBar.castShadow = true;
+    outlines.addOutline(hBar, 1.025);
+    dinClockGroup.add(hBar);
+  }
+  for (const fx of [-dinFrameSize * 0.5 + dinBarW * 0.5, dinFrameSize * 0.5 - dinBarW * 0.5]) {
+    const vBar = new THREE.Mesh(createBeveledBox(dinBarW, dinFrameSize - dinBarW * 1.9, 0.040, 0.006, 2), oakMat);
+    vBar.position.set(fx, 0, -0.004);
+    vBar.castShadow = true;
+    outlines.addOutline(vBar, 1.025);
+    dinClockGroup.add(vBar);
+  }
+
   const dinClockFace = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.132, 0.132, 0.040, 24),
-    mat({ map: textures.clockFace, color: 0xfaf6fc, roughness: 0.36 })
+    new THREE.PlaneGeometry(0.252, 0.252),
+    mat({ map: dinSquareClockFaceTex, roughness: 0.40 })
   );
-  dinClockFace.rotation.x = Math.PI / 2;
+  dinClockFace.rotation.y = Math.PI;
+  dinClockFace.position.z = -0.019;
   dinClockGroup.add(dinClockFace);
 
   // Real-time ticking 3D clock hands on the Dining wall clock
@@ -1394,33 +1624,144 @@ export function buildDiningAndKitchen(ctx: RoomBuildContext): void {
     dinWindowGroup.add(sheerMesh);
   }
 
-  // Wooden curtain rod & pastel-pink tied-back pleated curtains with gentle breeze sway
+  // Wooden curtain rod & warm khaki cotton-linen butterfly curtains (玄关附近卡其色蝴蝶帘 + 底部折叠缝合折边)
+  const khakiLinenCurtainTex = (() => {
+    const W = 512;
+    const H = 1024;
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const ctx2d = c.getContext('2d')!;
+    const bg = ctx2d.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0.0, '#d6c5aa');
+    bg.addColorStop(0.5, '#cbb89b');
+    bg.addColorStop(1.0, '#c2ae90');
+    ctx2d.fillStyle = bg;
+    ctx2d.fillRect(0, 0, W, H);
+
+    // Fine natural woven cotton-linen cross-weave slub
+    for (let y = 0; y < H; y += 3) {
+      ctx2d.fillStyle = y % 6 === 0 ? 'rgba(255, 250, 240, 0.065)' : 'rgba(118, 98, 74, 0.05)';
+      ctx2d.fillRect(0, y, W, 1);
+    }
+    for (let x = 0; x < W; x += 3) {
+      ctx2d.fillStyle = x % 6 === 0 ? 'rgba(255, 250, 240, 0.055)' : 'rgba(114, 94, 70, 0.045)';
+      ctx2d.fillRect(x, 0, 1, H);
+    }
+
+    // Tailored double-folded & stitched bottom hem (折叠缝合折边, aligns with CURTAIN_HEM_V = 0.038)
+    const hemTopY = Math.round(H * (1 - 0.038)); // y = 985
+    ctx2d.fillStyle = 'rgba(112, 92, 66, 0.16)';
+    ctx2d.fillRect(0, hemTopY, W, H - hemTopY);
+    const hemGrad = ctx2d.createLinearGradient(0, hemTopY - 6, 0, hemTopY + 9);
+    hemGrad.addColorStop(0.0, 'rgba(84, 66, 44, 0.0)');
+    hemGrad.addColorStop(0.42, 'rgba(84, 66, 44, 0.44)');
+    hemGrad.addColorStop(0.72, 'rgba(255, 248, 234, 0.28)');
+    hemGrad.addColorStop(1.0, 'rgba(255, 248, 234, 0.0)');
+    ctx2d.fillStyle = hemGrad;
+    ctx2d.fillRect(0, hemTopY - 6, W, 15);
+    // Fine cream-linen dashed running-stitch thread line (缝合走线针脚)
+    ctx2d.save();
+    ctx2d.strokeStyle = 'rgba(92, 74, 50, 0.52)';
+    ctx2d.lineWidth = 1.8;
+    ctx2d.setLineDash([7, 5]);
+    ctx2d.beginPath();
+    ctx2d.moveTo(0, hemTopY + 5.0);
+    ctx2d.lineTo(W, hemTopY + 5.0);
+    ctx2d.stroke();
+    ctx2d.strokeStyle = 'rgba(252, 244, 228, 0.76)';
+    ctx2d.lineWidth = 1.3;
+    ctx2d.beginPath();
+    ctx2d.moveTo(0, hemTopY + 3.6);
+    ctx2d.lineTo(W, hemTopY + 3.6);
+    ctx2d.stroke();
+    ctx2d.restore();
+    // Soft folded bottom edge highlight & underside shadow
+    ctx2d.fillStyle = 'rgba(255, 248, 236, 0.26)';
+    ctx2d.fillRect(0, H - 5, W, 3);
+    ctx2d.fillStyle = 'rgba(82, 64, 42, 0.32)';
+    ctx2d.fillRect(0, H - 2, W, 2);
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.repeat.set(1.2, 1.0);
+    tex.anisotropy = 4;
+    return tex;
+  })();
+
   const dinCurtainMat = mat({
-    map: textures.curtainFabric,
+    map: khakiLinenCurtainTex,
     bumpMap: textures.curtainBump,
-    bumpScale: 0.020,
-    color: 0xf4c6d8,
+    bumpScale: 0.012,
+    color: 0xffffff,
     roughness: 0.88,
     metalness: 0.0,
-    rimScale: 1.15,
-    windSway: 0.78,
+    rimScale: 1.12,
+    side: THREE.DoubleSide,
+    windSway: 0.72,
+  });
+  const dinTieBandMat = mat({
+    color: 0xf4ede0,
+    roughness: 0.90,
+    metalness: 0.0,
   });
   const dinRod = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.014, 0.014, 1.24, 12),
+    new THREE.CylinderGeometry(0.014, 0.014, 1.32, 12),
     darkWoodMat
   );
   dinRod.rotation.z = Math.PI / 2;
   dinRod.position.set(0, 0.76, -0.065);
   dinWindowGroup.add(dinRod);
 
+  const dinButterflyGeo = createButterflyCurtainGeometry(0.44, 1.96, 0.072, 7.0, 0.28);
   for (const side of [-1, 1] as const) {
-    const cPanelGeo = createDrapedCurtainGeometry(0.36, 1.96, 0.072, 7.5);
-    const cPanel = new THREE.Mesh(cPanelGeo, dinCurtainMat);
-    cPanel.position.set(side * 0.42, -0.18, -0.068);
+    const panelX = side * 0.42;
+    const cPanel = new THREE.Mesh(dinButterflyGeo, dinCurtainMat);
+    cPanel.position.set(panelX, -0.18, -0.068);
     cPanel.castShadow = true;
     cPanel.receiveShadow = true;
     outlines.addOutline(cPanel, 1.015);
     dinWindowGroup.add(cPanel);
+
+    // Sculpted butterfly tieback ribbon band + 2-loop bow at lower cinched waist (v = 0.28 -> y = -0.61)
+    const tieY = -0.61;
+    const tieBand = new THREE.Mesh(
+      new THREE.TorusGeometry(0.060, 0.013, 10, 18),
+      dinTieBandMat
+    );
+    tieBand.rotation.x = Math.PI / 2;
+    tieBand.scale.set(1.18, 0.82, 1);
+    tieBand.position.set(panelX, tieY, -0.064);
+    dinWindowGroup.add(tieBand);
+
+    const bowKnot = new THREE.Mesh(
+      new THREE.SphereGeometry(0.015, 10, 8),
+      dinTieBandMat
+    );
+    bowKnot.position.set(panelX, tieY, -0.118);
+    dinWindowGroup.add(bowKnot);
+
+    for (const bSide of [-1, 1]) {
+      const bowLoop = new THREE.Mesh(
+        new THREE.TorusGeometry(0.026, 0.008, 8, 14),
+        dinTieBandMat
+      );
+      bowLoop.rotation.z = bSide * 0.26;
+      bowLoop.scale.set(1.32, 0.72, 0.55);
+      bowLoop.position.set(panelX + bSide * 0.030, tieY + 0.010, -0.122);
+      dinWindowGroup.add(bowLoop);
+
+      const ribbonTail = new THREE.Mesh(
+        new THREE.BoxGeometry(0.018, 0.125, 0.007),
+        dinTieBandMat
+      );
+      ribbonTail.rotation.z = bSide * 0.22;
+      ribbonTail.rotation.x = 0.08;
+      ribbonTail.position.set(panelX + bSide * 0.020, tieY - 0.062, -0.124);
+      dinWindowGroup.add(ribbonTail);
+    }
   }
   diningGroup.add(dinWindowGroup);
 
@@ -3365,22 +3706,22 @@ export function buildDiningAndKitchen(ctx: RoomBuildContext): void {
     sinkWindowGroup.add(casingRail);
   }
 
-  // 2) Deep recessed wooden box-jamb reveals (9.5cm architectural window depth catching daylight!)
+  // 2) Deep recessed wooden box-jamb reveals (15cm architectural window depth inside the open East wall!)
   for (const sz of [-innerWinW / 2 + 0.010, innerWinW / 2 - 0.010]) {
     const jambV = new THREE.Mesh(
-      createBeveledBox(0.095, innerWinH, 0.020, 0.003, 1),
+      createBeveledBox(0.15, innerWinH, 0.022, 0.003, 1),
       woodPanelMat
     );
-    jambV.position.set(0.012, 0, sz);
+    jambV.position.set(0.055, 0, sz);
     jambV.receiveShadow = true;
     sinkWindowGroup.add(jambV);
   }
   for (const sy of [-innerWinH / 2 + 0.010, innerWinH / 2 - 0.010]) {
     const jambH = new THREE.Mesh(
-      createBeveledBox(0.095, 0.020, innerWinW, 0.003, 1),
+      createBeveledBox(0.15, 0.022, innerWinW, 0.003, 1),
       woodPanelMat
     );
-    jambH.position.set(0.012, sy, 0);
+    jambH.position.set(0.055, sy, 0);
     jambH.receiveShadow = true;
     sinkWindowGroup.add(jambH);
   }
@@ -3403,13 +3744,13 @@ export function buildDiningAndKitchen(ctx: RoomBuildContext): void {
   swSillApron.position.set(-0.016, -winH / 2 - 0.032, 0);
   sinkWindowGroup.add(swSillApron);
 
-  // Recessed backlit frosted daylight glass pane
+  // Recessed backlit frosted daylight glass pane seated deeply inside the open wall aperture
   const swGlass = new THREE.Mesh(
-    new THREE.PlaneGeometry(innerWinW - 0.018, innerWinH - 0.018),
-    createWindowEmissiveMaterial(uniforms, 0xfff2e0, 0.94)
+    new THREE.PlaneGeometry(innerWinW - 0.016, innerWinH - 0.016),
+    createWindowEmissiveMaterial(uniforms, 0xfff4e2, 0.96)
   );
   swGlass.rotation.y = -Math.PI / 2;
-  swGlass.position.x = 0.026;
+  swGlass.position.x = 0.088;
   swGlass.userData.dynamic = true;
   sinkWindowGroup.add(swGlass);
   windowGlowMeshes.push(swGlass);
@@ -3417,17 +3758,17 @@ export function buildDiningAndKitchen(ctx: RoomBuildContext): void {
   // Inner beveled wooden sash frame & subtle sill bead
   for (const sz of [-innerWinW / 2 + 0.024, innerWinW / 2 - 0.024]) {
     const sashV = new THREE.Mesh(
-      createBeveledBox(0.024, innerWinH - 0.016, 0.024, 0.004, 1),
+      createBeveledBox(0.026, innerWinH - 0.016, 0.024, 0.004, 1),
       oakMat
     );
-    sashV.position.set(0.016, 0, sz);
+    sashV.position.set(0.068, 0, sz);
     sinkWindowGroup.add(sashV);
   }
   const swMullion = new THREE.Mesh(
-    createBeveledBox(0.024, 0.022, innerWinW - 0.024, 0.004, 1),
+    createBeveledBox(0.026, 0.022, innerWinW - 0.024, 0.004, 1),
     oakMat
   );
-  swMullion.position.set(0.016, -0.05, 0);
+  swMullion.position.set(0.068, -0.05, 0);
   sinkWindowGroup.add(swMullion);
 
   // 4) Detailed Wooden Venetian Blind Assembly (Headrail Valance + 9 Tilted Beveled Slats + Ladder Cords + Pull Tassel!)
@@ -4862,6 +5203,33 @@ export function buildDiningAndKitchen(ctx: RoomBuildContext): void {
   addBoxCollider('col_kit_hutch', 6.84, 1.14, 2.58, 0.70, 2.28, 1.40);
 
   // =========================================================================
+  // Register Dining & Kitchen shared materials into Global Persistent Color Studio (F8)
+  apartmentColorStudio.registerMaterialColor('diningWood', '餐桌/餐边柜/橱柜木色', 'dining', [
+    oakMat,
+    woodPanelMat,
+    woodMoldingMat,
+  ]);
+  apartmentColorStudio.registerMaterialColor('diningWood', '餐桌/餐边柜/橱柜木色', 'dining', darkWoodMat, {
+    multiplier: 0.85,
+  });
+  apartmentColorStudio.registerMaterialColor('diningChairWood', '餐椅实木色', 'dining', chairOiledOakMat);
+  apartmentColorStudio.registerMaterialColor('diningChairCushion', '餐椅坐垫布色', 'dining', chairWovenCushionMat);
+  apartmentColorStudio.registerMaterialColor('diningCurtain', '餐厅蝴蝶帘色', 'dining', dinCurtainMat);
+  apartmentColorStudio.registerMaterialColor('diningTablecloth', '餐厅桌布色调', 'dining', tableclothMat);
+  apartmentColorStudio.registerMaterialColor('kitchenCounter', '厨房台面颜色', 'dining', counterTopMat);
+  apartmentColorStudio.registerMaterialColor('kitchenBacksplash', '厨房防溅墙砖', 'dining', backsplashTileMat);
+  apartmentColorStudio.registerMaterialColor('kitchenFridge', '厨房冰箱/家电色', 'dining', [
+    fridgeMat,
+    fridgeTrimMat,
+    applianceCreamMat,
+    applianceTrimMat,
+  ]);
+  apartmentColorStudio.registerMaterialColor('glassTint', '柜门玻璃色调', 'living', [
+    sbGlassMat,
+    cabinetGlassMat,
+  ]);
+  apartmentColorStudio.registerMaterialColor('lampColor', '全屋灯具/光源色调', 'global', shadeOuterMat);
+
   // 7. MERGE STATIC DINING & KITCHEN GEOMETRIES FOR MINIMAL DRAW CALLS
   // =========================================================================
   mergeStaticGroupToSingleMesh(diningGroup, outlines, 'DiningRoomMergedStaticMesh');

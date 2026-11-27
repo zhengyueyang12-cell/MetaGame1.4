@@ -40,7 +40,11 @@ import {
   type EncounterChoice,
 } from './data/bedroomEncounterScript';
 import { buildSoulSeedFileContent, VN_SCENES } from './data/millenniumScript';
-import { ApartmentEngine, type PcScreenRect } from './game/ApartmentEngine';
+import {
+  ApartmentEngine,
+  type PcScreenRect,
+  type SofaMenuOptionId,
+} from './game/ApartmentEngine';
 import type {
   AtmosphereMode,
   BasementPartId,
@@ -238,6 +242,7 @@ export default function App() {
   const [heroinePromptKind, setHeroinePromptKind] = useState<HeroineFloatingPromptKind | null>(null);
   const [sofaCoSeated, setSofaCoSeated] = useState(false);
   const [livingTvOn, setLivingTvOn] = useState(false);
+  const [activeSofaOption, setActiveSofaOption] = useState<SofaMenuOptionId>('play_game');
   const [sofaCoPlay, setSofaCoPlay] = useState<{
     phase: 'none' | 'fetching' | 'playing';
     tvScreenMode: TvConsoleScreenMode;
@@ -785,13 +790,17 @@ export default function App() {
       onRequestStartRoutineChat: (mode) => {
         startRoutineChatRef.current(mode);
       },
-      onSofaCoSitChange: ({ active, tvOn }) => {
+      onSofaCoSitChange: ({ active, tvOn, activeOption }) => {
         setSofaCoSeated(active);
         setLivingTvOn(tvOn);
+        if (activeOption) {
+          setActiveSofaOption(activeOption);
+        }
         if (!active) {
           encounterTokenRef.current += 1;
           setEncounterPhase((prev) => (prev === 'dialogue' ? 'idle' : prev));
           setEncounterNodeId(null);
+          setActiveSofaOption('play_game');
           setSofaCoPlay({
             phase: 'none',
             tvScreenMode: 'launcher',
@@ -804,6 +813,9 @@ export default function App() {
       },
       onSofaCoPlayChange: (state) => {
         setSofaCoPlay(state);
+        if (state.activeOption) {
+          setActiveSofaOption(state.activeOption);
+        }
       },
     });
 
@@ -1672,6 +1684,7 @@ export default function App() {
         coPlayPhase={sofaCoPlay.phase}
         tvScreenMode={sofaCoPlay.tvScreenMode}
         selectedTvGame={sofaCoPlay.selectedGame}
+        activeSofaOption={activeSofaOption}
         onStartEncounter={handlePromptClick}
         onAdvanceLine={handleAdvanceEncounterLine}
         onSelectChoice={handleSelectEncounterChoice}

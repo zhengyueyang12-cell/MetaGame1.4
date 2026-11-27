@@ -12,6 +12,7 @@ import {
   mergeDynamicSubtreeMeshes,
   mergeStaticGroupToSingleMesh,
 } from '../SceneManager';
+import { apartmentColorStudio } from '../devColorStudio';
 import {
   createTabletopPenSet,
   createTabletopTrinketCluster,
@@ -756,6 +757,18 @@ export function buildEntryway(
     glitchBurstTimer: 0,
   };
   ctx.mirrors.push(mirrorRig);
+
+  // Register Entryway shared materials into Global Persistent Color Studio (F8)
+  apartmentColorStudio.registerMaterialColor('entryWood', '玄关鞋柜/家具木色', 'bathEntry', [
+    woodMat,
+    drawerWhiteMat,
+    drawerMoldingMat,
+  ]);
+  apartmentColorStudio.registerMaterialColor('entryWood', '玄关鞋柜/家具木色', 'bathEntry', darkWoodMat, {
+    multiplier: 0.9,
+  });
+  apartmentColorStudio.registerMaterialColor('entryFrontDoor', '入户防盗门色', 'bathEntry', doorMat);
+  apartmentColorStudio.registerMaterialColor('entryFrontFrame', '入户门框金属', 'bathEntry', darkMetalMat);
 
   // Merge all static Entryway meshes into a single draw call
   mergeStaticGroupToSingleMesh(group, outlines, 'EntrywayMergedStaticMesh');

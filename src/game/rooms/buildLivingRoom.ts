@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import {
+  createArchedVelvetCurtainGeometry,
   createBeveledBox,
   createBeveledSlab,
   createBookGeometry,
   createBroadLeafGeometry,
   createDrapedCurtainGeometry,
+  createFlaredValanceGeometry,
   createMoldedDrawerFront,
   createPinchedPlumpPillowGeometry,
   createPinchedTuftedBackCushionGeometry,
@@ -28,6 +30,7 @@ import {
   type RoomBuildContext,
 } from './roomContext';
 import { buildToyGunMesh } from '../entities/buildToyGunAndPlane';
+import { apartmentColorStudio } from '../devColorStudio';
 import {
   buildTvRemoteMesh,
   buildXboxControllerMesh,
@@ -125,20 +128,20 @@ export function buildLivingRoom(
   });
   const wainscotMat = mat({
     map: textures.wainscotWood,
-    color: 0xffe4cc,
-    roughness: 0.90,
+    color: 0xf7e2d2,
+    roughness: 0.84,
     metalness: 0.0,
-    woodLacquer: 0.0,
-    celStrength: 0.54,
+    woodLacquer: 0.12,
+    celStrength: 0.48,
   });
   const wainscotTrimMat = mat({
     map: textures.furnitureOak,
     bumpMap: textures.furnitureWoodBump,
     bumpScale: 0.004,
-    color: 0xfff6e6,
+    color: 0xf5e2c4,
     roughness: 0.60,
     metalness: 0.0,
-    woodLacquer: 0.44,
+    woodLacquer: 0.48,
   });
   const wainscotBaseMat = wainscotTrimMat;
 
@@ -323,15 +326,15 @@ export function buildLivingRoom(
     group.add(crown);
   }
 
-  // Hinged Living Room / Dining Partition Door (Z = 0.25, X = 1.58 .. 2.73)
+  // Hinged Living Room / Dining Partition Door (Z = 0.25, X = 1.58 .. 2.73) — harmonized with TV stand honey-apricot-oak
   const doorMat = mat({
     map: textures.furnitureOak,
     bumpMap: textures.furnitureWoodBump,
-    bumpScale: 0.005,
-    color: 0xfff6e6,
-    roughness: 0.58,
+    bumpScale: 0.004,
+    color: 0xffffff,
+    roughness: 0.60,
     metalness: 0.0,
-    woodLacquer: 0.52,
+    woodLacquer: 0.42,
   });
   const doorMetalMat = mat({ color: 0x3b334a, roughness: 0.32, metalness: 0.72 });
   registerDoor(
@@ -350,24 +353,24 @@ export function buildLivingRoom(
     playDoorAudio
   );
 
-  // Clear luminous golden-honey MiSide wood furniture materials (zero double-darkening)
+  // Unified honey-apricot-oak furniture materials harmonized seamlessly with the TV stand
   const oakMat = mat({
     map: textures.furnitureOak,
     bumpMap: textures.furnitureWoodBump,
-    bumpScale: 0.005,
-    color: 0xfff8ec,
-    roughness: 0.58,
+    bumpScale: 0.004,
+    color: 0xffffff,
+    roughness: 0.60,
     metalness: 0.0,
-    woodLacquer: 0.52,
+    woodLacquer: 0.42,
   });
   const darkOakMat = mat({
     map: textures.furnitureOak,
     bumpMap: textures.furnitureWoodBump,
-    bumpScale: 0.005,
-    color: 0xf2d9b6,
-    roughness: 0.62,
+    bumpScale: 0.004,
+    color: 0xe6baa0,
+    roughness: 0.65,
     metalness: 0.0,
-    woodLacquer: 0.48,
+    woodLacquer: 0.36,
   });
   const drawerWhiteMat = mat({
     map: textures.furnitureOak,
@@ -376,35 +379,469 @@ export function buildLivingRoom(
     color: 0xfffdf6,
     roughness: 0.59,
     metalness: 0.0,
-    woodLacquer: 0.50,
+    woodLacquer: 0.44,
   });
   const drawerMoldingMat = mat({
     map: textures.furnitureOak,
     bumpMap: textures.furnitureWoodBump,
     bumpScale: 0.004,
-    color: 0xf7e4c6,
-    roughness: 0.60,
+    color: 0xf2d2b8,
+    roughness: 0.62,
     metalness: 0.0,
-    woodLacquer: 0.50,
+    woodLacquer: 0.42,
   });
   const handleBrassMat = mat({ color: 0xdcb46c, roughness: 0.38, metalness: 0.68 });
+  // Pure Cream-White Cashmere Christmas Rug with Fine Red-Green Pinstripes, Center Medallion & Scattered Small Holly Motifs
+  // (奶油白主底 + 红绿细线边框 + 中心花纹与零散红绿小花，无大块角部/边缘色块)
+  const christmasRugTex = (() => {
+    const S = 1024;
+    const c = document.createElement('canvas');
+    c.width = S;
+    c.height = S;
+    const rctx = c.getContext('2d')!;
+
+    // 1) Pure Luminous Warm Cream-White Cashmere Base across the entire rug (edges, corners & field all white!)
+    const bgGrad = rctx.createRadialGradient(S * 0.5, S * 0.5, 60, S * 0.5, S * 0.5, S * 0.74);
+    bgGrad.addColorStop(0.0, '#fdfaf3');
+    bgGrad.addColorStop(0.68, '#f6f0e4');
+    bgGrad.addColorStop(1.0, '#efe6d6');
+    rctx.fillStyle = bgGrad;
+    rctx.fillRect(0, 0, S, S);
+
+    // Subtle tone-on-tone warm-cream woven diamond quilt texture across the white field
+    rctx.save();
+    rctx.strokeStyle = 'rgba(216, 204, 186, 0.24)';
+    rctx.lineWidth = 1.8;
+    const step = 68;
+    for (let d = -S; d < S * 2; d += step) {
+      rctx.beginPath();
+      rctx.moveTo(d, 72);
+      rctx.lineTo(d + (S - 144), S - 72);
+      rctx.stroke();
+      rctx.beginPath();
+      rctx.moveTo(d, S - 72);
+      rctx.lineTo(d + (S - 144), 72);
+      rctx.stroke();
+    }
+    rctx.restore();
+
+    // 2) Delicate Red & Green Fine Pinstripe Border Lines on Pure Cream-White Edge (红绿细线边框，绝无大块色块)
+    rctx.strokeStyle = '#337d53';
+    rctx.lineWidth = 5.5;
+    rctx.strokeRect(42, 42, S - 84, S - 84);
+
+    rctx.strokeStyle = '#c8424e';
+    rctx.lineWidth = 4.0;
+    rctx.strokeRect(60, 60, S - 120, S - 120);
+
+    rctx.strokeStyle = 'rgba(214, 186, 118, 0.65)';
+    rctx.lineWidth = 2.2;
+    rctx.strokeRect(72, 72, S - 144, S - 144);
+
+    const drawSnowflake = (cx: number, cy: number, rad: number, color: string, lw = 3.0) => {
+      rctx.save();
+      rctx.translate(cx, cy);
+      rctx.strokeStyle = color;
+      rctx.lineWidth = lw;
+      rctx.lineCap = 'round';
+      for (let a = 0; a < 6; a++) {
+        const ang = (a / 6) * Math.PI * 2;
+        const dx = Math.cos(ang);
+        const dy = Math.sin(ang);
+        rctx.beginPath();
+        rctx.moveTo(0, 0);
+        rctx.lineTo(dx * rad, dy * rad);
+        rctx.stroke();
+        const mx = dx * rad * 0.56;
+        const my = dy * rad * 0.56;
+        for (const sgn of [-1, 1]) {
+          const bAng = ang + sgn * 0.68;
+          rctx.beginPath();
+          rctx.moveTo(mx, my);
+          rctx.lineTo(mx + Math.cos(bAng) * rad * 0.36, my + Math.sin(bAng) * rad * 0.36);
+          rctx.stroke();
+        }
+      }
+      rctx.fillStyle = color;
+      rctx.beginPath();
+      rctx.arc(0, 0, lw * 0.82, 0, Math.PI * 2);
+      rctx.fill();
+      rctx.restore();
+    };
+
+    const drawHollySprig = (cx: number, cy: number, scale = 1.0, rot = 0) => {
+      rctx.save();
+      rctx.translate(cx, cy);
+      rctx.rotate(rot);
+      rctx.scale(scale, scale);
+      for (const [ang, col] of [
+        [-0.62, '#2d7549'],
+        [0.62, '#388b59'],
+        [Math.PI - 0.62, '#388b59'],
+        [Math.PI + 0.62, '#2d7549'],
+      ] as [number, string][]) {
+        rctx.fillStyle = col;
+        rctx.beginPath();
+        rctx.ellipse(Math.cos(ang) * 14, Math.sin(ang) * 14, 12.5, 6.2, ang, 0, Math.PI * 2);
+        rctx.fill();
+      }
+      rctx.fillStyle = '#cf3947';
+      for (const [bx, by] of [
+        [0, -4.5],
+        [-4.6, 3.4],
+        [4.6, 3.4],
+      ]) {
+        rctx.beginPath();
+        rctx.arc(bx, by, 5.0, 0, Math.PI * 2);
+        rctx.fill();
+      }
+      rctx.fillStyle = '#fffdf6';
+      rctx.beginPath();
+      rctx.arc(-1.4, -5.8, 1.7, 0, Math.PI * 2);
+      rctx.fill();
+      rctx.restore();
+    };
+
+    // 3) Scattered Small Red-Green Holly Flowers & Tiny Snowflakes on the Open White Field & Corners (零散红绿小花，无大色块)
+    const scatteredSprigs: [number, number, number, number][] = [
+      // Four gentle corner sprigs
+      [138, 138, 1.32, Math.PI * 0.25],
+      [S - 138, 138, 1.32, -Math.PI * 0.25],
+      [138, S - 138, 1.32, -Math.PI * 0.25],
+      [S - 138, S - 138, 1.32, Math.PI * 0.25],
+      // Subtle mid-edge small sprigs
+      [S * 0.5, 118, 1.05, 0],
+      [S * 0.5, S - 118, 1.05, 0],
+      [118, S * 0.5, 1.05, Math.PI * 0.5],
+      [S - 118, S * 0.5, 1.05, Math.PI * 0.5],
+      // Light organic field accents between corners and center
+      [285, 255, 0.88, 0.65],
+      [S - 285, 255, 0.88, -0.65],
+      [285, S - 255, 0.88, -0.65],
+      [S - 285, S - 255, 0.88, 0.65],
+    ];
+    for (const [hx, hy, hs, hrot] of scatteredSprigs) {
+      drawHollySprig(hx, hy, hs, hrot);
+    }
+
+    // Whisper-light scattered tiny red & green snowflakes
+    for (const [fx, fy, fr, fcol] of [
+      [215, 152, 14, 'rgba(200, 66, 78, 0.65)'],
+      [152, 215, 13, 'rgba(51, 125, 83, 0.62)'],
+      [S - 215, 152, 14, 'rgba(200, 66, 78, 0.65)'],
+      [S - 152, 215, 13, 'rgba(51, 125, 83, 0.62)'],
+      [215, S - 152, 14, 'rgba(200, 66, 78, 0.65)'],
+      [152, S - 215, 13, 'rgba(51, 125, 83, 0.62)'],
+      [S - 215, S - 152, 14, 'rgba(200, 66, 78, 0.65)'],
+      [S - 152, S - 215, 13, 'rgba(51, 125, 83, 0.62)'],
+    ] as [number, number, number, string][]) {
+      drawSnowflake(fx, fy, fr, fcol, 2.3);
+    }
+
+    // 4) Ornate Scalloped 8-Lobed Red-Green Christmas Center Medallion (保留中心红绿花环徽章)
+    const cx = S * 0.5;
+    const cy = S * 0.5;
+
+    const traceScallopPetal = (radOuter: number, radInner: number, lobes: number, rotOffset = 0) => {
+      rctx.beginPath();
+      const steps = lobes * 24;
+      for (let i = 0; i <= steps; i++) {
+        const a = (i / steps) * Math.PI * 2 + rotOffset;
+        const lobeWave = Math.cos(a * lobes);
+        const r = radInner + (radOuter - radInner) * (0.5 + 0.5 * Math.pow(Math.max(0, lobeWave), 0.72) * (lobeWave >= 0 ? 1 : -0.35));
+        const px = cx + Math.cos(a) * r;
+        const py = cy + Math.sin(a) * r;
+        if (i === 0) rctx.moveTo(px, py);
+        else rctx.lineTo(px, py);
+      }
+      rctx.closePath();
+    };
+
+    // Subtle cream-gold halo ring framing the center medallion
+    rctx.strokeStyle = 'rgba(222, 194, 122, 0.62)';
+    rctx.lineWidth = 3.5;
+    rctx.beginPath();
+    rctx.arc(cx, cy, 232, 0, Math.PI * 2);
+    rctx.stroke();
+
+    // Outer 8-lobed evergreen botanical medallion
+    traceScallopPetal(218, 174, 8, 0);
+    rctx.fillStyle = '#2f7a4e';
+    rctx.fill();
+    rctx.strokeStyle = '#ecd084';
+    rctx.lineWidth = 4.2;
+    rctx.stroke();
+
+    // Cream-white scalloped lace separator ring
+    traceScallopPetal(174, 142, 8, Math.PI / 8);
+    rctx.fillStyle = '#faf5ea';
+    rctx.fill();
+
+    // Inner 8-lobed rich crimson-red tapestry medallion
+    traceScallopPetal(156, 120, 8, 0);
+    rctx.fillStyle = '#c83e4b';
+    rctx.fill();
+    rctx.strokeStyle = '#f2d488';
+    rctx.lineWidth = 3.8;
+    rctx.stroke();
+
+    // Deep evergreen inner rosette core
+    rctx.fillStyle = '#2a6f46';
+    rctx.beginPath();
+    rctx.arc(cx, cy, 70, 0, Math.PI * 2);
+    rctx.fill();
+    rctx.strokeStyle = '#fbf7ee';
+    rctx.lineWidth = 3.2;
+    rctx.stroke();
+
+    // Ring of 16 alternating holly-berry sprigs & cream-white snowflakes woven around the outer green wreath
+    for (let w = 0; w < 16; w++) {
+      const wa = (w / 16) * Math.PI * 2;
+      const wx = cx + Math.cos(wa) * 192;
+      const wy = cy + Math.sin(wa) * 192;
+      if (w % 2 === 0) {
+        drawHollySprig(wx, wy, 0.88, wa + Math.PI * 0.5);
+      } else {
+        drawSnowflake(wx, wy, 11.5, '#fbf7ee', 2.3);
+      }
+    }
+
+    // 8 delicate cream snowflakes orbiting the red medallion ring
+    for (let k = 0; k < 8; k++) {
+      const ka = (k / 8) * Math.PI * 2 + Math.PI / 8;
+      drawSnowflake(cx + Math.cos(ka) * 108, cy + Math.sin(ka) * 108, 14, '#fbf7ee', 2.5);
+    }
+
+    // Centerpiece layered cream-white & warm-gold star snowflake
+    drawSnowflake(cx, cy, 52, '#fbf7ee', 4.5);
+    drawSnowflake(cx, cy, 26, '#f5d684', 3.2);
+
+    // Four small cardinal holly sprigs outside the center medallion
+    for (let d = 0; d < 4; d++) {
+      const da = (d / 4) * Math.PI * 2;
+      drawHollySprig(cx + Math.cos(da) * 254, cy + Math.sin(da) * 254, 1.06, da + Math.PI * 0.5);
+    }
+
+    // Soft Painterly Plush Wool Puffs
+    for (let p = 0; p < 160; p++) {
+      const px = ((p * 179 + 53) % (S - 80)) + 40;
+      const py = ((p * 251 + 97) % (S - 80)) + 40;
+      const pr = 18 + (p % 5) * 8;
+      const pGrad = rctx.createRadialGradient(px, py, 2, px, py, pr);
+      if (p % 2 === 0) {
+        pGrad.addColorStop(0, 'rgba(255, 252, 244, 0.12)');
+        pGrad.addColorStop(1, 'rgba(255, 252, 244, 0)');
+      } else {
+        pGrad.addColorStop(0, 'rgba(72, 46, 38, 0.05)');
+        pGrad.addColorStop(1, 'rgba(72, 46, 38, 0)');
+      }
+      rctx.fillStyle = pGrad;
+      rctx.beginPath();
+      rctx.arc(px, py, pr, 0, Math.PI * 2);
+      rctx.fill();
+    }
+
+    // Balanced 4x4px cashmere-tuft granules (right at the sweet spot between tactile wool grain & anime cleanliness!)
+    const srcData = rctx.getImageData(0, 0, S, S);
+    const dstImg = rctx.createImageData(S, S);
+    const src = srcData.data;
+    const dst = dstImg.data;
+
+    const bumpCanvas = document.createElement('canvas');
+    bumpCanvas.width = S;
+    bumpCanvas.height = S;
+    const bctx = bumpCanvas.getContext('2d')!;
+    const bumpImg = bctx.createImageData(S, S);
+    const bData = bumpImg.data;
+
+    const cellSz = 4;
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const tx = Math.floor(x / cellSz);
+        const ty = Math.floor(y / cellSz);
+        const cellHash = ((tx * 73856093) ^ (ty * 19349663)) >>> 0;
+        const fineHash = ((x * 374761393) ^ (y * 668265263)) >>> 0;
+
+        // Balanced yarn-edge feather (±1.75px — woven wool edge without harsh jaggedness)
+        const jx = (((cellHash & 15) - 7.5) / 7.5) * 1.75;
+        const jy = ((((cellHash >> 4) & 15) - 7.5) / 7.5) * 1.75;
+        const sx = Math.min(S - 1, Math.max(0, Math.round(x + jx)));
+        const sy = Math.min(S - 1, Math.max(0, Math.round(y + jy)));
+        const sIdx = (sy * S + sx) * 4;
+
+        // Rounded cashmere granule dome + restrained tuft & fiber variation
+        const lx = ((x % cellSz) - (cellSz - 1) * 0.5) / (cellSz * 0.54);
+        const ly = ((y % cellSz) - (cellSz - 1) * 0.5) / (cellSz * 0.54);
+        const dome = Math.max(0, 1.0 - (lx * lx + ly * ly) * 0.58);
+        const tuftVar = (((cellHash >> 8) & 31) - 15.5) * 0.45;
+        const microGrain = ((fineHash & 15) - 7.5) * 0.35;
+        const shadeDelta = (dome - 0.70) * 23.0 + tuftVar + microGrain;
+
+        const dIdx = (y * S + x) * 4;
+        dst[dIdx] = Math.min(255, Math.max(0, src[sIdx] + shadeDelta));
+        dst[dIdx + 1] = Math.min(255, Math.max(0, src[sIdx + 1] + shadeDelta));
+        dst[dIdx + 2] = Math.min(255, Math.max(0, src[sIdx + 2] + shadeDelta));
+        dst[dIdx + 3] = 255;
+
+        const bumpVal = Math.min(
+          255,
+          Math.max(0, Math.round(92 + dome * 130 + tuftVar * 1.2 + microGrain * 1.1))
+        );
+        bData[dIdx] = bumpVal;
+        bData[dIdx + 1] = bumpVal;
+        bData[dIdx + 2] = bumpVal;
+        bData[dIdx + 3] = 255;
+      }
+    }
+    rctx.putImageData(dstImg, 0, 0);
+    bctx.putImageData(bumpImg, 0, 0);
+
+    const colorTex = new THREE.CanvasTexture(c);
+    colorTex.colorSpace = THREE.SRGBColorSpace;
+    colorTex.wrapS = THREE.ClampToEdgeWrapping;
+    colorTex.wrapT = THREE.ClampToEdgeWrapping;
+    colorTex.anisotropy = 4;
+
+    const bumpTex = new THREE.CanvasTexture(bumpCanvas);
+    bumpTex.wrapS = THREE.ClampToEdgeWrapping;
+    bumpTex.wrapT = THREE.ClampToEdgeWrapping;
+    bumpTex.anisotropy = 4;
+
+    return { colorTex, bumpTex };
+  })();
+
+  // Balanced Anime Plush Cashmere Rug Material (midpoint bumpScale 0.030 & celStrength 0.48)
   const rugMat = mat({
-    map: textures.rugWeave,
-    bumpMap: textures.rugBump,
-    bumpScale: 0.012,
-    color: 0xfff5f2,
-    roughness: 0.96,
-    metalness: 0.0,
-  });
-  const curtainMat = mat({
-    map: textures.curtainFloralGreen,
-    bumpMap: textures.curtainBump,
-    bumpScale: 0.018,
+    map: christmasRugTex.colorTex,
+    bumpMap: christmasRugTex.bumpTex,
+    bumpScale: 0.030,
     color: 0xffffff,
-    roughness: 0.92,
+    roughness: 0.95,
     metalness: 0.0,
+    rimScale: 1.36,
+    celStrength: 0.48,
+  });
+
+  // Live-tunable Curtain Palette: Warm Cream-Cotton Base + Denser Deeper Olive-Moss Fine Intersecting Plaid Lines
+  // (暖米白底 + 更密一点的深橄榄苔绿细线条交叉格纹!)
+  const curtainPalette = {
+    base: '#f6f1e4',
+    check: '#64792d', // Deeper olive-moss green
+    checkAlpha: 0.80,
+    checkSize: 72,    // Denser fine plaid spacing (格子纹更密一点!)
+  };
+
+  const curtainCanvas = document.createElement('canvas');
+  curtainCanvas.width = 512;
+  curtainCanvas.height = 1536;
+
+  const parseHexRgb = (hex: string): [number, number, number] => {
+    const clean = hex.replace('#', '').trim();
+    const n = parseInt(clean.length === 3 ? clean.split('').map((ch) => ch + ch).join('') : clean, 16);
+    if (Number.isNaN(n)) return [106, 126, 50];
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+
+  const paintLivingCurtainCanvas = () => {
+    const W = curtainCanvas.width;
+    const H = curtainCanvas.height;
+    const ctx2d = curtainCanvas.getContext('2d')!;
+    const [cr, cg, cb] = parseHexRgb(curtainPalette.check);
+    const sz = Math.max(48, Math.min(256, Math.round(curtainPalette.checkSize)));
+
+    // 1) Warm Creamy-Cotton Base (#f6f1e4)
+    ctx2d.fillStyle = curtainPalette.base;
+    ctx2d.fillRect(0, 0, W, H);
+
+    // 2) Crisp Slender Intersecting Olive-Moss Plaid Lines (细线条交叉，告别粗色带!)
+    const a = curtainPalette.checkAlpha;
+    const mainLw = Math.max(6, Math.round(sz * 0.085)); // ~11px slender woven stripe
+    const subLw = Math.max(2, Math.round(sz * 0.025));  // ~3px fine companion hairline
+    const subGap = mainLw + 6;
+
+    // Vertical thin plaid lines
+    for (let x = Math.round(sz * 0.5); x < W; x += sz) {
+      ctx2d.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${a.toFixed(2)})`;
+      ctx2d.fillRect(x - mainLw * 0.5, 0, mainLw, H);
+      ctx2d.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${(a * 0.58).toFixed(2)})`;
+      ctx2d.fillRect(x - subGap, 0, subLw, H);
+      ctx2d.fillRect(x + subGap - subLw, 0, subLw, H);
+    }
+    // Horizontal thin plaid lines (cross cleanly into darker olive intersection knots!)
+    for (let y = Math.round(sz * 0.5); y < H; y += sz) {
+      ctx2d.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${(a * 0.94).toFixed(2)})`;
+      ctx2d.fillRect(0, y - mainLw * 0.5, W, mainLw);
+      ctx2d.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${(a * 0.54).toFixed(2)})`;
+      ctx2d.fillRect(0, y - subGap, W, subLw);
+      ctx2d.fillRect(0, y + subGap - subLw, W, subLw);
+    }
+
+    // Fine woven cotton-linen cross-weave slub threads
+    for (let y = 0; y < H; y += 3) {
+      ctx2d.fillStyle = y % 6 === 0 ? 'rgba(255, 253, 246, 0.16)' : `rgba(${Math.round(cr * 0.55)}, ${Math.round(cg * 0.55)}, ${Math.round(cb * 0.45)}, 0.055)`;
+      ctx2d.fillRect(0, y, W, 1);
+    }
+    for (let x = 0; x < W; x += 3) {
+      ctx2d.fillStyle = x % 6 === 0 ? 'rgba(255, 253, 246, 0.14)' : `rgba(${Math.round(cr * 0.55)}, ${Math.round(cg * 0.55)}, ${Math.round(cb * 0.45)}, 0.048)`;
+      ctx2d.fillRect(x, 0, 1, H);
+    }
+
+    // 3) Tailored double-folded & stitched bottom hem (折叠缝合折边, aligns with CURTAIN_HEM_V = 0.038)
+    const hemTopY = Math.round(H * (1 - 0.038)); // y = 1478
+    ctx2d.fillStyle = `rgba(${Math.round(cr * 0.52)}, ${Math.round(cg * 0.55)}, ${Math.round(cb * 0.42)}, 0.14)`;
+    ctx2d.fillRect(0, hemTopY, W, H - hemTopY);
+    const hemGrad = ctx2d.createLinearGradient(0, hemTopY - 8, 0, hemTopY + 12);
+    hemGrad.addColorStop(0.0, 'rgba(62, 74, 30, 0.0)');
+    hemGrad.addColorStop(0.42, 'rgba(62, 74, 30, 0.36)');
+    hemGrad.addColorStop(0.68, 'rgba(255, 252, 244, 0.42)');
+    hemGrad.addColorStop(1.0, 'rgba(255, 252, 244, 0.0)');
+    ctx2d.fillStyle = hemGrad;
+    ctx2d.fillRect(0, hemTopY - 8, W, 20);
+    // Fine dashed running-stitch thread line (缝合走线针脚)
+    ctx2d.save();
+    ctx2d.strokeStyle = 'rgba(74, 88, 36, 0.58)';
+    ctx2d.lineWidth = 2.0;
+    ctx2d.setLineDash([7, 5]);
+    ctx2d.beginPath();
+    ctx2d.moveTo(0, hemTopY + 6.5);
+    ctx2d.lineTo(W, hemTopY + 6.5);
+    ctx2d.stroke();
+    ctx2d.strokeStyle = 'rgba(255, 252, 244, 0.86)';
+    ctx2d.lineWidth = 1.5;
+    ctx2d.beginPath();
+    ctx2d.moveTo(0, hemTopY + 4.8);
+    ctx2d.lineTo(W, hemTopY + 4.8);
+    ctx2d.stroke();
+    ctx2d.restore();
+    ctx2d.fillStyle = 'rgba(255, 252, 244, 0.34)';
+    ctx2d.fillRect(0, H - 7, W, 4);
+    ctx2d.fillStyle = 'rgba(62, 74, 30, 0.28)';
+    ctx2d.fillRect(0, H - 3, W, 3);
+  };
+  paintLivingCurtainCanvas();
+
+  const matchaFloralCurtainTex = (() => {
+    const tex = new THREE.CanvasTexture(curtainCanvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.repeat.set(1.35, 1.0); // Denser fine plaid checks across curtain width!
+    tex.anisotropy = 4;
+    return tex;
+  })();
+
+  // Silky plush velvet shading: lower roughness + strong grazing rim sheen + smooth continuous shading
+  const curtainMat = mat({
+    map: matchaFloralCurtainTex,
+    bumpMap: textures.curtainBump,
+    bumpScale: 0.007,
+    color: 0xffffff,
+    roughness: 0.56,
+    metalness: 0.04,
+    rimScale: 1.55,
+    celStrength: 0.34,
     side: THREE.DoubleSide,
-    windSway: 0.76,
+    windSway: 0.55,
   });
   const sheerCurtainMat = mat({
     map: textures.curtainFabric,
@@ -420,7 +857,7 @@ export function buildLivingRoom(
     windSway: 0.44,
   });
   const curtainBandMat = mat({
-    color: 0xf6f1de,
+    color: 0xf4efe4,
     roughness: 0.92,
     metalness: 0.0,
   });
@@ -462,51 +899,170 @@ export function buildLivingRoom(
     rimScale: 0.0,
     fabricCream: 1.0,
   });
-  // Lively Macaron Color-Pop Throw Pillow Palette: Sakura Pink, Sky Blue, Coral Peach, Butter Lemon & Mint Gingham
+  // Cozy Christmas Knitted & Plush Sofa Throw Pillows (圣诞红底白边 + 森林绿雪花针织 + 奶油麻花毛绒抱枕)
+  const createKnitChristmasPillowTex = (style: 'redWhiteTrim' | 'greenSnowflake' | 'creamKnit') => {
+    const S = 512;
+    const c = document.createElement('canvas');
+    c.width = S;
+    c.height = S;
+    const ctx2d = c.getContext('2d')!;
+
+    if (style === 'redWhiteTrim') {
+      // Warm Christmas berry-crimson knit base + thick plush snow-white border trim
+      ctx2d.fillStyle = '#cf3442';
+      ctx2d.fillRect(0, 0, S, S);
+      ctx2d.strokeStyle = '#faf5ea';
+      ctx2d.lineWidth = 38;
+      ctx2d.strokeRect(19, 19, S - 38, S - 38);
+      ctx2d.strokeStyle = '#e8c468';
+      ctx2d.lineWidth = 5;
+      ctx2d.strokeRect(48, 48, S - 96, S - 96);
+    } else if (style === 'greenSnowflake') {
+      // Rich spruce-pine knit base + Fair Isle cream bands
+      ctx2d.fillStyle = '#2d7649';
+      ctx2d.fillRect(0, 0, S, S);
+      ctx2d.fillStyle = 'rgba(250, 244, 232, 0.22)';
+      ctx2d.fillRect(0, 74, S, 24);
+      ctx2d.fillRect(0, S - 98, S, 24);
+      ctx2d.strokeStyle = '#faf5ea';
+      ctx2d.lineWidth = 6;
+      ctx2d.strokeRect(24, 24, S - 48, S - 48);
+    } else {
+      // Warm oatmeal-cream chunky cable-knit base + festive red & pine accent stripes
+      ctx2d.fillStyle = '#f6efe2';
+      ctx2d.fillRect(0, 0, S, S);
+      ctx2d.fillStyle = '#cf3442';
+      ctx2d.fillRect(0, 86, S, 22);
+      ctx2d.fillRect(0, S - 108, S, 22);
+      ctx2d.fillStyle = '#2d7649';
+      ctx2d.fillRect(0, 118, S, 12);
+      ctx2d.fillRect(0, S - 130, S, 12);
+    }
+
+    // Crisp V-stitch knitted wool yarn ribs across entire pillow surface
+    ctx2d.lineWidth = 2.0;
+    for (let y = 6; y < S; y += 12) {
+      for (let x = 4; x < S; x += 14) {
+        ctx2d.strokeStyle = 'rgba(255, 252, 244, 0.14)';
+        ctx2d.beginPath();
+        ctx2d.moveTo(x, y - 4);
+        ctx2d.lineTo(x + 5, y + 4);
+        ctx2d.lineTo(x + 10, y - 4);
+        ctx2d.stroke();
+        ctx2d.strokeStyle = 'rgba(28, 16, 18, 0.12)';
+        ctx2d.beginPath();
+        ctx2d.moveTo(x + 2, y - 2);
+        ctx2d.lineTo(x + 5, y + 5);
+        ctx2d.stroke();
+      }
+    }
+
+    // Draw crisp knitted snow-white snowflakes on red & green Christmas pillows
+    const drawKnitSnowflake = (cx: number, cy: number, rad: number, color: string, lw = 6) => {
+      ctx2d.save();
+      ctx2d.translate(cx, cy);
+      ctx2d.strokeStyle = color;
+      ctx2d.lineWidth = lw;
+      ctx2d.lineCap = 'round';
+      for (let a = 0; a < 6; a++) {
+        const ang = (a / 6) * Math.PI * 2;
+        const dx = Math.cos(ang);
+        const dy = Math.sin(ang);
+        ctx2d.beginPath();
+        ctx2d.moveTo(0, 0);
+        ctx2d.lineTo(dx * rad, dy * rad);
+        ctx2d.stroke();
+        for (const sgn of [-1, 1]) {
+          const bAng = ang + sgn * 0.68;
+          ctx2d.beginPath();
+          ctx2d.moveTo(dx * rad * 0.56, dy * rad * 0.56);
+          ctx2d.lineTo(
+            dx * rad * 0.56 + Math.cos(bAng) * rad * 0.36,
+            dy * rad * 0.56 + Math.sin(bAng) * rad * 0.36
+          );
+          ctx2d.stroke();
+        }
+      }
+      ctx2d.restore();
+    };
+
+    if (style === 'redWhiteTrim') {
+      drawKnitSnowflake(S * 0.5, S * 0.5, 96, '#fcf8ee', 9);
+      drawKnitSnowflake(S * 0.5, S * 0.5, 42, '#f4cf6a', 5);
+    } else if (style === 'greenSnowflake') {
+      drawKnitSnowflake(S * 0.5, S * 0.5, 88, '#fcf8ee', 8);
+      for (const [sx, sy] of [
+        [124, 152],
+        [388, 152],
+        [124, 360],
+        [388, 360],
+      ]) {
+        drawKnitSnowflake(sx, sy, 34, '#f8f2e4', 5);
+      }
+    } else {
+      drawKnitSnowflake(S * 0.5, S * 0.5, 72, '#cf3442', 7);
+      drawKnitSnowflake(S * 0.5, S * 0.5, 34, '#2d7649', 5);
+    }
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    return tex;
+  };
+
+  const xmasRedPillowTex = createKnitChristmasPillowTex('redWhiteTrim');
+  const xmasGreenPillowTex = createKnitChristmasPillowTex('greenSnowflake');
+  const xmasCreamPillowTex = createKnitChristmasPillowTex('creamKnit');
+
   const sofaCreamPillowMat = mat({
-    map: textures.plushFabric,
+    map: xmasRedPillowTex,
     bumpMap: textures.plushBump,
-    bumpScale: 0.011,
-    color: 0xffa6c4,
-    roughness: 0.92,
+    bumpScale: 0.018,
+    color: 0xffffff,
+    roughness: 0.94,
     metalness: 0.0,
-    fabricCream: 1.0,
+    rimScale: 1.38,
+    fabricCream: 0.85,
   });
   const sofaIcePillowMat = mat({
-    map: textures.plushFabric,
+    map: xmasCreamPillowTex,
     bumpMap: textures.plushBump,
-    bumpScale: 0.011,
-    color: 0x94d4ff,
-    roughness: 0.92,
+    bumpScale: 0.018,
+    color: 0xffffff,
+    roughness: 0.94,
     metalness: 0.0,
-    fabricCream: 1.0,
+    rimScale: 1.38,
+    fabricCream: 0.90,
   });
   const sofaLemonPillowMat = mat({
-    map: textures.plushFabric,
+    map: xmasRedPillowTex,
     bumpMap: textures.plushBump,
-    bumpScale: 0.011,
-    color: 0xffeb88,
-    roughness: 0.92,
+    bumpScale: 0.018,
+    color: 0xffffff,
+    roughness: 0.94,
     metalness: 0.0,
-    fabricCream: 1.0,
+    rimScale: 1.38,
+    fabricCream: 0.85,
   });
   const sofaCoralPillowMat = mat({
-    map: textures.plushFabric,
+    map: xmasGreenPillowTex,
     bumpMap: textures.plushBump,
-    bumpScale: 0.011,
-    color: 0xff9482,
-    roughness: 0.92,
+    bumpScale: 0.018,
+    color: 0xffffff,
+    roughness: 0.94,
     metalness: 0.0,
-    fabricCream: 1.0,
+    rimScale: 1.38,
+    fabricCream: 0.85,
   });
   const ginghamPillowMat = mat({
-    map: textures.ginghamPillow,
+    map: xmasGreenPillowTex,
     bumpMap: textures.plushBump,
-    bumpScale: 0.013,
+    bumpScale: 0.018,
     color: 0xffffff,
-    roughness: 0.91,
+    roughness: 0.94,
     metalness: 0.0,
-    fabricCream: 1.0,
+    rimScale: 1.38,
+    fabricCream: 0.85,
   });
   // Light-toned Matte Paper & Cloth Book Atlas Material (16-variant sculpted books)
   const bookAtlasMat = mat({
@@ -834,28 +1390,291 @@ export function buildLivingRoom(
   const pageMat = mat({ color: 0xfffafc, roughness: 0.92, metalness: 0.0 });
 
   // =========================================================================
-  // 1. WOVEN AREA RUG WITH BEVELED EDGES (Y = +0.012)
+  // 1. PLUSH 3D CASHMERE-PILE CHRISTMAS AREA RUG WITH FRINGE & LOFT (Y = +0.014)
   // =========================================================================
   const rugGroup = new THREE.Group();
-  rugGroup.position.set(4.10, 0.012, -5.25);
-  const rugMain = new THREE.Mesh(
-    createBeveledSlab(5.0, 0.024, 5.4, 0.16, 0.009),
-    rugMat
+  rugGroup.position.set(4.10, 0.014, -5.25);
+
+  // Thick cushioned warm cream-white wool backing (matches pure white rug edge — zero green bleed!)
+  const rugBaseSlab = new THREE.Mesh(
+    createBeveledSlab(5.0, 0.028, 5.4, 0.14, 0.011),
+    mat({ color: 0xf3ecdd, roughness: 0.92, metalness: 0.0, celStrength: 0.52 })
   );
+  rugBaseSlab.receiveShadow = true;
+  outlines.addOutline(rugBaseSlab, 1.006);
+  rugGroup.add(rugBaseSlab);
+
+  const rugPileGeo = new THREE.PlaneGeometry(4.92, 5.32, 76, 82);
+  rugPileGeo.rotateX(-Math.PI / 2);
+  {
+    const posAttr = rugPileGeo.attributes.position;
+    const uvAttr = rugPileGeo.attributes.uv;
+    for (let i = 0; i < posAttr.count; i++) {
+      const x = posAttr.getX(i);
+      const z = posAttr.getZ(i);
+      const u = THREE.MathUtils.clamp((x + 2.46) / 4.92, 0, 1);
+      const v = THREE.MathUtils.clamp((z + 2.66) / 5.32, 0, 1);
+      uvAttr.setXY(i, u, v);
+
+      // Soft plush wool cushion crown + tapered micro-undulation so pile never dips into backing slab
+      const edgeDist = Math.min(u, 1 - u, v, 1 - v);
+      const edgeLoft = THREE.MathUtils.smoothstep(edgeDist, 0.0, 0.045) * 0.0065;
+      const tuftFade = THREE.MathUtils.smoothstep(edgeDist, 0.0, 0.035);
+      const microTuft =
+        (Math.sin(x * 16.5 + z * 5.2) * 0.0016 +
+          Math.cos(z * 18.2 - x * 6.4) * 0.0016 +
+          Math.sin(x * 42.0) * Math.cos(z * 42.0) * 0.0010) *
+        tuftFade;
+      posAttr.setY(i, 0.0154 + edgeLoft + microTuft);
+    }
+    posAttr.needsUpdate = true;
+    uvAttr.needsUpdate = true;
+    rugPileGeo.computeVertexNormals();
+  }
+  const rugMain = new THREE.Mesh(rugPileGeo, rugMat);
   rugMain.receiveShadow = true;
   rugGroup.add(rugMain);
+
+  // Tactile Cream-Ivory Twisted Cashmere Tassel Fringes along North & South Rug Ends
+  const rugFringeMat = mat({ color: 0xf4ecdc, roughness: 0.95, metalness: 0.0 });
+  const fringeGeo = new THREE.CylinderGeometry(0.0055, 0.0045, 0.075, 6);
+  fringeGeo.rotateX(Math.PI / 2);
+  const fringeCountPerSide = 68;
+  const fringesInst = new THREE.InstancedMesh(fringeGeo, rugFringeMat, fringeCountPerSide * 2);
+  fringesInst.receiveShadow = true;
+  let fIdx = 0;
+  for (const zSide of [-1, 1]) {
+    for (let k = 0; k < fringeCountPerSide; k++) {
+      const fx = -2.38 + (k / (fringeCountPerSide - 1)) * 4.76;
+      const fz = zSide * 2.73;
+      const splay = (((k * 17) % 7) - 3) * 0.035;
+      _instPos.set(4.10 + fx, 0.006, -5.25 + fz);
+      _instEuler.set(0, splay, 0);
+      _instQuat.setFromEuler(_instEuler);
+      _instScale.set(1, 0.72, 1);
+      _instMat.compose(_instPos, _instQuat, _instScale);
+      fringesInst.setMatrixAt(fIdx++, _instMat);
+    }
+  }
+  fringesInst.instanceMatrix.needsUpdate = true;
+  fringesInst.computeBoundingSphere();
+  group.add(fringesInst);
   group.add(rugGroup);
 
   // =========================================================================
-  // 2. PATTERNED JACQUARD DRAPED CURTAINS + TRANSLUCENT WHITE SHEER CURTAINS
-  //    (半透明白纱与精细窗帘褶皱) + TIEBACK TASSELS, RINGS & FINIALS
+  // 2. ARCHED MATCHA-GREEN VELVET CURTAINS + FLARED LACE VALANCE + SHEERS
+  //    (上段聚拢成拱形、丝绒厚实柔滑质感的抹茶绿窗帘 + 向外舒展的蕾丝窗幔)
   // =========================================================================
-  const curtainGeo = createDrapedCurtainGeometry(0.46, 2.56, 0.078, 7.5);
-  curtainGeo.rotateY(-Math.PI / 2);
+  const curtainLeftGeo = createArchedVelvetCurtainGeometry(0.88, 2.56, -1, 0.072, 6.5, 0.34);
+  curtainLeftGeo.rotateY(-Math.PI / 2);
+  const curtainRightGeo = createArchedVelvetCurtainGeometry(0.88, 2.56, 1, 0.072, 6.5, 0.34);
+  curtainRightGeo.rotateY(-Math.PI / 2);
 
   // Full-aperture translucent white voile sheer curtain geometry with fine vertical pleats
   const sheerPanelGeo = createDrapedCurtainGeometry(0.66, 2.46, 0.038, 10.5);
   sheerPanelGeo.rotateY(-Math.PI / 2);
+
+  // Top Curtain Valance (live-redrawable Olive-Matcha Gingham + White Lace Trim)
+  const valanceCanvas = document.createElement('canvas');
+  valanceCanvas.width = 1024;
+  valanceCanvas.height = 256;
+  const paintValanceTopBand = () => {
+    const W = valanceCanvas.width;
+    const ctx2d = valanceCanvas.getContext('2d')!;
+    const [cr, cg, cb] = parseHexRgb(curtainPalette.check);
+    const vCheck = Math.max(48, Math.round(curtainPalette.checkSize * 0.72));
+    const a = curtainPalette.checkAlpha;
+    const mainLw = Math.max(5, Math.round(vCheck * 0.09));
+    const subLw = 2;
+
+    ctx2d.fillStyle = curtainPalette.base;
+    ctx2d.fillRect(0, 0, W, 152);
+    for (let x = Math.round(vCheck * 0.5); x < W; x += vCheck) {
+      ctx2d.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${a.toFixed(2)})`;
+      ctx2d.fillRect(x - mainLw * 0.5, 0, mainLw, 152);
+      ctx2d.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${(a * 0.56).toFixed(2)})`;
+      ctx2d.fillRect(x - mainLw - 4, 0, subLw, 152);
+      ctx2d.fillRect(x + mainLw + 2, 0, subLw, 152);
+    }
+    for (let y = 42; y < 152; y += vCheck) {
+      ctx2d.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${(a * 0.94).toFixed(2)})`;
+      ctx2d.fillRect(0, y - mainLw * 0.5, W, mainLw);
+      ctx2d.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${(a * 0.52).toFixed(2)})`;
+      ctx2d.fillRect(0, y - mainLw - 4, W, subLw);
+      ctx2d.fillRect(0, y + mainLw + 2, W, subLw);
+    }
+    // Soft vertical pleat shading across valance body
+    for (let i = 0; i < 24; i++) {
+      const fx = (i / 24) * W;
+      const fw = W / 24;
+      const pGrad = ctx2d.createLinearGradient(fx, 0, fx + fw, 0);
+      pGrad.addColorStop(0.0, 'rgba(54, 68, 28, 0.14)');
+      pGrad.addColorStop(0.46, 'rgba(255, 253, 246, 0.10)');
+      pGrad.addColorStop(1.0, 'rgba(54, 68, 28, 0.14)');
+      ctx2d.fillStyle = pGrad;
+      ctx2d.fillRect(fx, 0, fw, 152);
+    }
+  };
+
+  const valanceTex = (() => {
+    const W = 1024;
+    const H = 256;
+    const c = valanceCanvas;
+    const ctx2d = c.getContext('2d')!;
+    ctx2d.clearRect(0, 0, W, H);
+    paintValanceTopBand();
+
+    // 2) Intricate Multi-Tier White Embroidered Lace Trim (y = 144..252)
+    // 2a) Upper satin lace heading ribbon with delicate twin stitch lines & tiny pearl beads
+    ctx2d.fillStyle = '#fdfcf8';
+    ctx2d.fillRect(0, 144, W, 16);
+    ctx2d.fillStyle = 'rgba(186, 194, 180, 0.55)';
+    ctx2d.fillRect(0, 143, W, 2);
+    ctx2d.fillRect(0, 159, W, 1.5);
+    ctx2d.fillStyle = 'rgba(218, 222, 212, 0.75)';
+    for (let sx = 6; sx < W; sx += 12) {
+      ctx2d.beginPath();
+      ctx2d.arc(sx, 152, 2.0, 0, Math.PI * 2);
+      ctx2d.fill();
+    }
+
+    // 2b) Sheer diamond-mesh tulle insertion band (y = 160..198) with embroidered floral diamonds
+    ctx2d.fillStyle = 'rgba(253, 252, 248, 0.52)';
+    ctx2d.fillRect(0, 160, W, 38);
+    ctx2d.strokeStyle = 'rgba(255, 255, 255, 0.88)';
+    ctx2d.lineWidth = 1.3;
+    for (let mx = -40; mx < W + 40; mx += 11) {
+      ctx2d.beginPath();
+      ctx2d.moveTo(mx, 160);
+      ctx2d.lineTo(mx + 38, 198);
+      ctx2d.moveTo(mx + 38, 160);
+      ctx2d.lineTo(mx, 198);
+      ctx2d.stroke();
+    }
+    // Delicate embroidered diamond motifs along the mesh band
+    const scallops = 24;
+    const scW = W / scallops;
+    const scR = scW * 0.5;
+    for (let i = 0; i < scallops; i++) {
+      const cx = i * scW + scR;
+      const my = 179;
+      ctx2d.fillStyle = '#ffffff';
+      ctx2d.beginPath();
+      ctx2d.moveTo(cx, my - 11);
+      ctx2d.lineTo(cx + 9, my);
+      ctx2d.lineTo(cx, my + 11);
+      ctx2d.lineTo(cx - 9, my);
+      ctx2d.closePath();
+      ctx2d.fill();
+      // Tiny embroidered side buds
+      ctx2d.beginPath();
+      ctx2d.arc(cx - 13, my, 2.6, 0, Math.PI * 2);
+      ctx2d.arc(cx + 13, my, 2.6, 0, Math.PI * 2);
+      ctx2d.fill();
+    }
+    // Crisp lower lace cord separating tulle mesh from scalloped fringe
+    ctx2d.fillStyle = '#ffffff';
+    ctx2d.fillRect(0, 196, W, 5);
+
+    // 2c) 24 Finely Sculpted Double-Ring Scalloped Lace Arches with Picot Pearl Beading
+    for (let i = 0; i < scallops; i++) {
+      const cx = i * scW + scR;
+      const cy = 201;
+
+      // Translucent inner tulle web inside each scallop arch
+      ctx2d.fillStyle = 'rgba(254, 253, 250, 0.72)';
+      ctx2d.beginPath();
+      ctx2d.arc(cx, cy, scR + 1.5, 0, Math.PI, false);
+      ctx2d.closePath();
+      ctx2d.fill();
+
+      // Bold embroidered outer scalloped border cordonnet
+      ctx2d.strokeStyle = '#ffffff';
+      ctx2d.lineWidth = 4.2;
+      ctx2d.beginPath();
+      ctx2d.arc(cx, cy, scR + 0.5, 0.04, Math.PI - 0.04, false);
+      ctx2d.stroke();
+
+      // Secondary inner concentric lace embroidery arc
+      ctx2d.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx2d.lineWidth = 2.0;
+      ctx2d.beginPath();
+      ctx2d.arc(cx, cy, scR * 0.66, 0.14, Math.PI - 0.14, false);
+      ctx2d.stroke();
+
+      // Subtle silver-ivory embroidery relief shadow
+      ctx2d.strokeStyle = 'rgba(202, 206, 198, 0.52)';
+      ctx2d.lineWidth = 1.2;
+      ctx2d.beginPath();
+      ctx2d.arc(cx, cy, scR * 0.84, 0.10, Math.PI - 0.10, false);
+      ctx2d.stroke();
+
+      // Tiny embroidered fan rays inside each scallop
+      ctx2d.strokeStyle = 'rgba(255, 255, 255, 0.92)';
+      ctx2d.lineWidth = 1.5;
+      for (let r = 1; r <= 5; r++) {
+        const ang = (r / 6) * Math.PI;
+        ctx2d.beginPath();
+        ctx2d.moveTo(cx + Math.cos(ang) * 4.5, cy + Math.sin(ang) * 4.5);
+        ctx2d.lineTo(cx + Math.cos(ang) * (scR - 2.0), cy + Math.sin(ang) * (scR - 2.0));
+        ctx2d.stroke();
+      }
+
+      // Delicate micro-picot lace pearl loops around every scallop edge
+      ctx2d.fillStyle = '#ffffff';
+      for (let b = 1; b <= 7; b++) {
+        const ang = (b / 8) * Math.PI;
+        const px = cx + Math.cos(ang) * (scR + 3.4);
+        const py = cy + Math.sin(ang) * (scR + 3.4);
+        ctx2d.beginPath();
+        ctx2d.arc(px, py, 2.3, 0, Math.PI * 2);
+        ctx2d.fill();
+      }
+    }
+
+    // 2d) Punch delicate openwork eyelet cutouts (central medallion + twin side teardrops + mesh diamonds)
+    ctx2d.globalCompositeOperation = 'destination-out';
+    for (let i = 0; i < scallops; i++) {
+      const cx = i * scW + scR;
+      // Mesh diamond center eyelet
+      ctx2d.beginPath();
+      ctx2d.arc(cx, 179, 3.0, 0, Math.PI * 2);
+      ctx2d.fill();
+      // Scallop inner center floral eyelet
+      ctx2d.beginPath();
+      ctx2d.arc(cx, 211, 3.6, 0, Math.PI * 2);
+      ctx2d.fill();
+      // Flanking petite eyelet teardrops
+      for (const ox of [-9.5, 9.5]) {
+        ctx2d.beginPath();
+        ctx2d.arc(cx + ox, 207, 2.2, 0, Math.PI * 2);
+        ctx2d.fill();
+      }
+    }
+    ctx2d.globalCompositeOperation = 'source-over';
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.anisotropy = 4;
+    return tex;
+  })();
+
+  const valanceMat = mat({
+    map: valanceTex,
+    color: 0xffffff,
+    roughness: 0.60,
+    metalness: 0.03,
+    rimScale: 1.40,
+    celStrength: 0.36,
+    side: THREE.DoubleSide,
+    alphaTest: 0.28,
+    windSway: 0.18,
+  });
+  // Outwardly flared ruffle valance (never pinches inward!)
+  const valanceGeo = createFlaredValanceGeometry(1.80, 0.38, 0.044, 13.0);
+  valanceGeo.rotateY(-Math.PI / 2);
 
   // InstancedMesh for 24 Curtain Rings, 4 Rod Finials & 4 Wall Brackets
   const ringGeo = new THREE.TorusGeometry(0.024, 0.005, 8, 12);
@@ -889,44 +1708,105 @@ export function buildLivingRoom(
       group.add(sheerMesh);
     }
 
-    for (const side of [-1, 1]) {
-      const cz = wz + side * 0.68;
+    for (const side of [-1, 1] as const) {
       const curtain = new THREE.Group();
-      curtain.position.set(7.08, 1.50, cz);
+      // Centered on window wz so upper section of left & right velvet panels meet seamlessly at wz,
+      // then sweep outward in a graceful elliptical arch framing the window!
+      curtain.position.set(7.08, 1.50, wz);
 
-      const drapeMesh = new THREE.Mesh(curtainGeo, curtainMat);
+      const drapeMesh = new THREE.Mesh(
+        side === -1 ? curtainLeftGeo : curtainRightGeo,
+        curtainMat
+      );
       drapeMesh.castShadow = true;
       drapeMesh.receiveShadow = true;
       outlines.addOutline(drapeMesh, 1.012);
       curtain.add(drapeMesh);
 
-      // Sculpted gathered fabric tieback band + braided hanging tassel
+      // Delicate White Cotton Tassel Fringe hanging along the exact wavy bottom hem (窗帘下摆白色流苏!)
+      const tasselMat = mat({
+        color: 0xfbf7ee,
+        roughness: 0.92,
+        metalness: 0.0,
+        windSway: 0.65,
+      });
+      const tasselGeo = (() => {
+        const cord = new THREE.CylinderGeometry(0.0028, 0.0028, 0.016, 6);
+        cord.translate(0, -0.008, 0);
+        const bead = new THREE.SphereGeometry(0.0065, 7, 6);
+        bead.translate(0, -0.018, 0);
+        const skirt = new THREE.ConeGeometry(0.0125, 0.046, 8);
+        skirt.translate(0, -0.044, 0);
+        return BufferGeometryUtils.mergeGeometries([cord, bead, skirt], false)!;
+      })();
+      const hemPosAttr = (side === -1 ? curtainLeftGeo : curtainRightGeo).attributes.position;
+      const hemUvAttr = (side === -1 ? curtainLeftGeo : curtainRightGeo).attributes.uv;
+      const tasselAnchors: THREE.Vector3[] = [];
+      for (let vi = 0; vi < hemPosAttr.count; vi++) {
+        if (hemUvAttr.getY(vi) <= 0.001) {
+          tasselAnchors.push(new THREE.Vector3(hemPosAttr.getX(vi), hemPosAttr.getY(vi), hemPosAttr.getZ(vi)));
+        }
+      }
+      const stride = Math.max(1, Math.floor(tasselAnchors.length / 18));
+      const picked = tasselAnchors.filter((_, idx) => idx % stride === 0);
+      const tasselsInst = new THREE.InstancedMesh(tasselGeo, tasselMat, picked.length);
+      for (let ti = 0; ti < picked.length; ti++) {
+        const a = picked[ti];
+        _instPos.set(a.x, a.y + 0.003, a.z);
+        _instEuler.set(0, 0, 0);
+        _instQuat.setFromEuler(_instEuler);
+        _instScale.set(1, 1, 1);
+        _instMat.compose(_instPos, _instQuat, _instScale);
+        tasselsInst.setMatrixAt(ti, _instMat);
+      }
+      tasselsInst.instanceMatrix.needsUpdate = true;
+      tasselsInst.computeBoundingSphere();
+      curtain.add(tasselsInst);
+
+      // Sculpted velvet tieback ribbon band + 2-loop bow + fluttering tails at the gathered waist (v = 0.34 -> y = -0.41)
+      const tieY = -0.41;
+      const tieZ = side * 0.635;
       const tieBand = new THREE.Mesh(
-        new THREE.TorusGeometry(0.095, 0.018, 10, 18),
+        new THREE.TorusGeometry(0.095, 0.016, 10, 20),
         curtainBandMat
       );
       tieBand.rotation.x = Math.PI / 2;
-      tieBand.scale.set(0.72, 1.32, 1);
-      tieBand.position.set(0, -0.34, 0);
+      tieBand.scale.set(0.68, 1.24, 1);
+      tieBand.position.set(-0.012, tieY, tieZ);
       curtain.add(tieBand);
 
-      const tasselCord = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.006, 0.006, 0.14, 8),
+      // Ribbon bow facing into the living room (-X)
+      const bowKnot = new THREE.Mesh(
+        new THREE.SphereGeometry(0.018, 10, 8),
         curtainBandMat
       );
-      tasselCord.position.set(-0.055, -0.42, side * 0.05);
-      curtain.add(tasselCord);
+      bowKnot.position.set(-0.072, tieY, tieZ);
+      curtain.add(bowKnot);
 
-      const tasselSkirt = new THREE.Mesh(
-        new THREE.ConeGeometry(0.024, 0.085, 12),
-        handleBrassMat
-      );
-      tasselSkirt.position.set(-0.055, -0.51, side * 0.05);
-      curtain.add(tasselSkirt);
+      for (const bSide of [-1, 1]) {
+        const bowLoop = new THREE.Mesh(
+          new THREE.TorusGeometry(0.030, 0.009, 8, 16),
+          curtainBandMat
+        );
+        bowLoop.rotation.y = Math.PI / 2;
+        bowLoop.rotation.x = bSide * 0.28;
+        bowLoop.scale.set(1.35, 0.72, 0.55);
+        bowLoop.position.set(-0.078, tieY + 0.012, tieZ + bSide * 0.034);
+        curtain.add(bowLoop);
+
+        const ribbonTail = new THREE.Mesh(
+          new THREE.BoxGeometry(0.008, 0.145, 0.022),
+          curtainBandMat
+        );
+        ribbonTail.rotation.x = bSide * 0.22;
+        ribbonTail.rotation.z = -0.10;
+        ribbonTail.position.set(-0.080, tieY - 0.072, tieZ + bSide * 0.024);
+        curtain.add(ribbonTail);
+      }
 
       for (let r = 0; r < 6; r++) {
-        const rz = (r - 2.5) * 0.068;
-        _instMat.makeTranslation(7.09, 2.79, cz + rz);
+        const rz = side * (0.08 + r * 0.148);
+        _instMat.makeTranslation(7.09, 2.79, wz + rz);
         curtainRingsInst.setMatrixAt(ringIdx++, _instMat);
       }
 
@@ -934,13 +1814,20 @@ export function buildLivingRoom(
     }
 
     const rod = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.018, 0.018, 1.76, 12),
+      new THREE.CylinderGeometry(0.018, 0.018, 1.84, 12),
       darkOakMat
     );
     rod.rotation.x = Math.PI / 2;
     rod.position.set(7.09, 2.81, wz);
     rod.castShadow = true;
     group.add(rod);
+
+    // Top outwardly-flared matcha velvet valance with intricate scalloped white lace trim
+    const valanceMesh = new THREE.Mesh(valanceGeo, valanceMat);
+    valanceMesh.position.set(6.99, 2.66, wz);
+    valanceMesh.castShadow = true;
+    valanceMesh.receiveShadow = true;
+    group.add(valanceMesh);
 
     for (const end of [-1, 1]) {
       _instMat.makeTranslation(7.09, 2.81, wz + end * 0.90);
@@ -959,266 +1846,607 @@ export function buildLivingRoom(
   group.add(curtainRingsInst, finialsInst, bracketsInst);
 
   // =========================================================================
-  // 3. ENLARGED ARCHITECTURAL LOUVERED TV MEDIA CONSOLE (X = 6.76, Z = -5.08)
-  //    Width = 2.38m, Depth = 0.58m, Height = 0.62m + Hi-Fi Bookshelf Speakers
+  // 3. MISIDE HONEY-OAK GRADIENT TV MEDIA CONSOLE, SLEEK FLAT TV & MATTE-BLACK SPEAKERS
+  //    (X = 6.76, Z = -5.08 — Clean soft shading gradients, minimal grain stripes!)
   // =========================================================================
+  const makeSmoothGradientTexture = (
+    topHex: string,
+    midHex: string,
+    botHex: string,
+    edgeShade = 0.14,
+    subtleGrainAlpha = 0.025
+  ): THREE.CanvasTexture => {
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = 256;
+    const ctx2d = c.getContext('2d')!;
+    const vGrad = ctx2d.createLinearGradient(0, 0, 0, 256);
+    vGrad.addColorStop(0.0, topHex);
+    vGrad.addColorStop(0.48, midHex);
+    vGrad.addColorStop(1.0, botHex);
+    ctx2d.fillStyle = vGrad;
+    ctx2d.fillRect(0, 0, 256, 256);
+
+    // Soft horizontal edge AO falloff for painterly 3D volume
+    const hGrad = ctx2d.createLinearGradient(0, 0, 256, 0);
+    hGrad.addColorStop(0.0, `rgba(42, 22, 18, ${edgeShade})`);
+    hGrad.addColorStop(0.14, 'rgba(255, 255, 255, 0.04)');
+    hGrad.addColorStop(0.5, 'rgba(255, 248, 240, 0.06)');
+    hGrad.addColorStop(0.86, 'rgba(255, 255, 255, 0.03)');
+    hGrad.addColorStop(1.0, `rgba(42, 22, 18, ${edgeShade})`);
+    ctx2d.fillStyle = hGrad;
+    ctx2d.fillRect(0, 0, 256, 256);
+
+    // Ultra-subtle satin tonal variation (almost zero stripes)
+    if (subtleGrainAlpha > 0) {
+      for (let i = 0; i < 18; i++) {
+        const y = (i / 18) * 256 + ((i * 37) % 11);
+        ctx2d.fillStyle = i % 2 === 0
+          ? `rgba(255, 240, 224, ${subtleGrainAlpha})`
+          : `rgba(92, 48, 26, ${subtleGrainAlpha})`;
+        ctx2d.fillRect(0, y, 256, 4 + (i % 5));
+      }
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    return tex;
+  };
+
+  // High-Res (512x512) Water-Lacquered Oak Wood Grain Texture for TV Stand, Wall Shelf & Sideboard (木纹水漆质感)
+  const makeWaterLacquerWoodTexture = (
+    topHex: string,
+    midHex: string,
+    botHex: string,
+    veinColor: string,
+    highlightColor: string,
+    edgeShade = 0.14
+  ): THREE.CanvasTexture => {
+    const S = 512;
+    const c = document.createElement('canvas');
+    c.width = S;
+    c.height = S;
+    const ctx2d = c.getContext('2d')!;
+    const vGrad = ctx2d.createLinearGradient(0, 0, 0, S);
+    vGrad.addColorStop(0.0, topHex);
+    vGrad.addColorStop(0.48, midHex);
+    vGrad.addColorStop(1.0, botHex);
+    ctx2d.fillStyle = vGrad;
+    ctx2d.fillRect(0, 0, S, S);
+
+    // Subtle aqueous sheen & soft painterly edge AO falloff
+    const hGrad = ctx2d.createLinearGradient(0, 0, S, 0);
+    hGrad.addColorStop(0.0, `rgba(42, 22, 16, ${edgeShade})`);
+    hGrad.addColorStop(0.16, 'rgba(255, 250, 244, 0.06)');
+    hGrad.addColorStop(0.5, 'rgba(255, 248, 240, 0.09)');
+    hGrad.addColorStop(0.84, 'rgba(255, 250, 244, 0.05)');
+    hGrad.addColorStop(1.0, `rgba(42, 22, 16, ${edgeShade})`);
+    ctx2d.fillStyle = hGrad;
+    ctx2d.fillRect(0, 0, S, S);
+
+    // Crisp flowing natural oak wood grain fibers under clear water-based lacquer
+    for (let i = 0; i < 88; i++) {
+      const fy = (i / 88) * S;
+      const isHi = i % 5 === 0;
+      const isDeep = i % 7 === 0;
+      ctx2d.strokeStyle = isHi ? highlightColor : veinColor;
+      ctx2d.globalAlpha = isHi ? 0.16 : isDeep ? 0.22 : 0.11;
+      ctx2d.lineWidth = isDeep ? 1.5 : 0.95;
+      ctx2d.beginPath();
+      ctx2d.moveTo(0, fy);
+      const w1 = Math.sin(i * 0.41) * 5.6 + Math.cos(i * 0.19) * 3.0;
+      const w2 = -Math.cos(i * 0.33) * 5.2 + Math.sin(i * 0.23) * 2.6;
+      ctx2d.bezierCurveTo(S * 0.33, fy + w1, S * 0.67, fy + w2, S, fy);
+      ctx2d.stroke();
+    }
+
+    // Organic cathedral growth ring arches
+    for (let k = 0; k < 5; k++) {
+      const cx = 64 + k * 96;
+      const cy = 62 + ((k * 137) % (S - 124));
+      for (let r = 1; r <= 5; r++) {
+        ctx2d.strokeStyle = veinColor;
+        ctx2d.globalAlpha = r % 2 === 0 ? 0.15 : 0.10;
+        ctx2d.lineWidth = 1.05;
+        ctx2d.beginPath();
+        ctx2d.ellipse(cx, cy, r * 30, r * 4.4, 0.02 * (k % 2 === 0 ? 1 : -1), 0, Math.PI * 2);
+        ctx2d.stroke();
+      }
+    }
+
+    // Fine oak open pores & silky medullary sheen flecks
+    for (let i = 0; i < 480; i++) {
+      const px = (i * 197 + 19) % S;
+      const py = (i * 313 + 7) % S;
+      const len = 6 + (i % 14);
+      ctx2d.fillStyle = i % 9 === 0 ? highlightColor : veinColor;
+      ctx2d.globalAlpha = i % 9 === 0 ? 0.17 : 0.11;
+      ctx2d.fillRect(px, py, len, 1.1);
+    }
+    ctx2d.globalAlpha = 1.0;
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.anisotropy = 8;
+    return tex;
+  };
+
+  // Water-lacquered honey-apricot & deep walnut oak wood grain textures (水漆木纹质感)
+  const tvWoodGradTex = makeWaterLacquerWoodTexture('#f2bb8c', '#e39e6a', '#c97e4f', '#6b3518', '#fff4e2', 0.14);
+  const tvWoodDeepTex = makeWaterLacquerWoodTexture('#d6905e', '#be7446', '#9a5834', '#4d240f', '#ffebd2', 0.18);
+  // Smooth satin charcoal-slate gradient for TV bezel, stand, media players & studio speakers
+  const tvCharcoalGradTex = makeSmoothGradientTexture('#3b404e', '#262a35', '#161922', 0.18, 0.0);
+  const tvSpeakerConeTex = (() => {
+    const c = document.createElement('canvas');
+    c.width = 128;
+    c.height = 128;
+    const ctx2d = c.getContext('2d')!;
+    const rGrad = ctx2d.createRadialGradient(54, 52, 4, 64, 64, 62);
+    rGrad.addColorStop(0.0, '#4d5364');
+    rGrad.addColorStop(0.28, '#292d38');
+    rGrad.addColorStop(0.68, '#1b1e26');
+    rGrad.addColorStop(0.86, '#393e4c');
+    rGrad.addColorStop(1.0, '#14161d');
+    ctx2d.fillStyle = rGrad;
+    ctx2d.fillRect(0, 0, 128, 128);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  })();
+  // Sleek MiSide standby TV glass gradient (deep midnight-slate -> soft indigo sheen -> velvet charcoal)
+  const tvStandbyGradTex = (() => {
+    const c = document.createElement('canvas');
+    c.width = 512;
+    c.height = 288;
+    const ctx2d = c.getContext('2d')!;
+    const bg = ctx2d.createLinearGradient(0, 0, 0, 288);
+    bg.addColorStop(0.0, '#171d2c');
+    bg.addColorStop(0.46, '#232e46');
+    bg.addColorStop(0.50, '#182032');
+    bg.addColorStop(1.0, '#101420');
+    ctx2d.fillStyle = bg;
+    ctx2d.fillRect(0, 0, 512, 288);
+    // Soft diagonal window reflection sheen
+    const sheen = ctx2d.createRadialGradient(365, 86, 12, 365, 86, 210);
+    sheen.addColorStop(0.0, 'rgba(185, 208, 255, 0.14)');
+    sheen.addColorStop(0.5, 'rgba(140, 168, 230, 0.05)');
+    sheen.addColorStop(1.0, 'rgba(0, 0, 0, 0)');
+    ctx2d.fillStyle = sheen;
+    ctx2d.fillRect(0, 0, 512, 288);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  })();
+
+  const tvWoodMat = mat({
+    map: tvWoodGradTex,
+    bumpMap: textures.furnitureWoodBump,
+    bumpScale: 0.0052,
+    color: 0xffffff,
+    roughness: 0.42,
+    metalness: 0.0,
+    woodLacquer: 0.85,
+  });
+  const tvWoodDeepMat = mat({
+    map: tvWoodDeepTex,
+    bumpMap: textures.furnitureWoodBump,
+    bumpScale: 0.0055,
+    color: 0xffffff,
+    roughness: 0.48,
+    metalness: 0.0,
+    woodLacquer: 0.75,
+  });
+  const tvCharcoalMat = mat({
+    map: tvCharcoalGradTex,
+    color: 0xffffff,
+    roughness: 0.34,
+    metalness: 0.32,
+  });
+  const tvCharcoalTrimMat = mat({
+    map: tvCharcoalGradTex,
+    color: 0xd8dce8,
+    roughness: 0.28,
+    metalness: 0.42,
+  });
+
+  // Vintage oil-rubbed antique bronze hardware material (复古暗古铜拉手材质，与黄铜形成丰富层次)
+  const antiqueBronzeMat = mat({ color: 0x4a382c, roughness: 0.34, metalness: 0.78 });
+
+  // Reusable Varied American Hardware Handle Builder (多种复古美式拉手，不再千篇一律！)
+  // facingDir: +1 means handle extends toward +X; -1 means toward -X
+  const createAmericanHandle = (
+    style: 'bail' | 'cup' | 'bar' | 'ring' | 'octKnob',
+    facingDir: 1 | -1 = 1
+  ): THREE.Group => {
+    const h = new THREE.Group();
+    const s = facingDir;
+    if (style === 'bail') {
+      // Classic American Curved Bail Drop-Pull (参考图二顶部抽屉复古弧形吊环拉手)
+      for (const rz of [-0.036, 0.036]) {
+        const rosette = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.010, 0.012, 0.005, 8),
+          antiqueBronzeMat
+        );
+        rosette.rotation.z = Math.PI / 2;
+        rosette.position.set(s * 0.003, 0.008, rz);
+        h.add(rosette);
+        const post = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.0035, 0.0035, 0.012, 8),
+          antiqueBronzeMat
+        );
+        post.rotation.z = Math.PI / 2;
+        post.position.set(s * 0.009, 0.008, rz);
+        h.add(post);
+      }
+      const bailCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(s * 0.014, 0.008, -0.036),
+        new THREE.Vector3(s * 0.020, -0.010, -0.022),
+        new THREE.Vector3(s * 0.022, -0.016, 0),
+        new THREE.Vector3(s * 0.020, -0.010, 0.022),
+        new THREE.Vector3(s * 0.014, 0.008, 0.036),
+      ]);
+      const bailMesh = new THREE.Mesh(
+        new THREE.TubeGeometry(bailCurve, 16, 0.0038, 8, false),
+        antiqueBronzeMat
+      );
+      bailMesh.castShadow = true;
+      h.add(bailMesh);
+    } else if (style === 'cup') {
+      // Classic American Half-Moon Shell Cup Pull (复古贝壳半月杯形拉手)
+      const hood = new THREE.Mesh(
+        new THREE.SphereGeometry(0.026, 12, 8, 0, Math.PI, 0, Math.PI * 0.55),
+        antiqueBronzeMat
+      );
+      hood.scale.set(0.55, 0.72, 1.35);
+      hood.rotation.y = s > 0 ? Math.PI / 2 : -Math.PI / 2;
+      hood.position.set(s * 0.002, 0.004, 0);
+      hood.castShadow = true;
+      h.add(hood);
+      const lip = new THREE.Mesh(
+        new THREE.BoxGeometry(0.005, 0.006, 0.072),
+        handleBrassMat
+      );
+      lip.position.set(s * 0.003, 0.009, 0);
+      h.add(lip);
+    } else if (style === 'bar') {
+      // Sleek Stepped Vertical Bar Pull (复古金属阶梯竖拉手 — 用于电视柜柜门)
+      for (const py of [-0.042, 0.042]) {
+        const base = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.014, 0.014), antiqueBronzeMat);
+        base.position.set(s * 0.003, py, 0);
+        h.add(base);
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.018, 8), antiqueBronzeMat);
+        post.rotation.z = Math.PI / 2;
+        post.position.set(s * 0.012, py, 0);
+        h.add(post);
+      }
+      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.104, 0.009), handleBrassMat);
+      grip.position.set(s * 0.021, 0, 0);
+      grip.castShadow = true;
+      h.add(grip);
+    } else if (style === 'ring') {
+      // Vintage Hanging Drop-Ring Pull (复古圆盘吊环拉手 — 用于实木柜门)
+      const plate = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.016, 0.018, 0.005, 8),
+        antiqueBronzeMat
+      );
+      plate.rotation.z = Math.PI / 2;
+      plate.position.set(s * 0.003, 0.010, 0);
+      h.add(plate);
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(0.016, 0.0036, 8, 16),
+        handleBrassMat
+      );
+      ring.rotation.y = Math.PI / 2;
+      ring.position.set(s * 0.012, -0.006, 0);
+      ring.castShadow = true;
+      h.add(ring);
+    } else {
+      // Faceted Octagonal Antique-Bronze Knob (复古八角暗铜门钮 — 用于玻璃门)
+      const plate = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.011, 0.013, 0.004, 8),
+        antiqueBronzeMat
+      );
+      plate.rotation.z = Math.PI / 2;
+      plate.position.set(s * 0.003, 0, 0);
+      h.add(plate);
+      const knob = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.011, 0.008, 0.014, 8),
+        antiqueBronzeMat
+      );
+      knob.rotation.z = s > 0 ? -Math.PI / 2 : Math.PI / 2;
+      knob.position.set(s * 0.011, 0, 0);
+      knob.castShadow = true;
+      h.add(knob);
+    }
+    return h;
+  };
+
   const tvConsole = new THREE.Group();
   tvConsole.position.set(6.76, 0, -5.08);
 
-  // Chunkier rounded bullnose solid-oak top slab + shadow reveal under-bevel
+  // Crisp Sharp-Edged 3-Step American Crown Top (硬朗直角阶梯顶冠，告别凸出发圆!)
   const consoleTop = new THREE.Mesh(
-    createBeveledSlab(0.60, 0.044, 2.40, 0.056, 0.015),
-    oakMat
+    new THREE.BoxGeometry(0.62, 0.032, 2.44),
+    tvWoodMat
   );
-  consoleTop.position.y = 0.606;
+  consoleTop.position.y = 0.609;
   consoleTop.castShadow = true;
   consoleTop.receiveShadow = true;
-  outlines.addOutline(consoleTop, 1.014);
   tvConsole.add(consoleTop);
 
-  const consoleTopReveal = new THREE.Mesh(
-    createBeveledBox(0.53, 0.018, 2.30, 0.006, 2),
-    darkOakMat
+  const consoleUnderCrown = new THREE.Mesh(
+    new THREE.BoxGeometry(0.585, 0.020, 2.39),
+    tvWoodDeepMat
   );
-  consoleTopReveal.position.y = 0.576;
-  tvConsole.add(consoleTopReveal);
+  consoleUnderCrown.position.y = 0.583;
+  tvConsole.add(consoleUnderCrown);
 
-  const consoleBot = new THREE.Mesh(
-    createBeveledSlab(0.58, 0.038, 2.34, 0.046, 0.012),
-    oakMat
+  const consoleFriezeBead = new THREE.Mesh(
+    new THREE.BoxGeometry(0.565, 0.014, 2.35),
+    tvWoodMat
   );
-  consoleBot.position.y = 0.178;
+  consoleFriezeBead.position.y = 0.566;
+  tvConsole.add(consoleFriezeBead);
+
+  // Full-width upper open media shelf divider with crisp flat front lip (top at Y = 0.391m)
+  const upperBayFloor = new THREE.Mesh(
+    new THREE.BoxGeometry(0.55, 0.026, 2.28),
+    tvWoodMat
+  );
+  upperBayFloor.position.set(-0.005, 0.378, 0);
+  upperBayFloor.castShadow = true;
+  upperBayFloor.receiveShadow = true;
+  tvConsole.add(upperBayFloor);
+
+  const upperBayLip = new THREE.Mesh(
+    new THREE.BoxGeometry(0.012, 0.028, 2.28),
+    tvWoodDeepMat
+  );
+  upperBayLip.position.set(-0.274, 0.378, 0);
+  tvConsole.add(upperBayLip);
+
+  // Crisp Sharp-Edged Baseboard Plinth + Bracket Feet (告别圆角底框!)
+  const consoleBot = new THREE.Mesh(
+    new THREE.BoxGeometry(0.60, 0.030, 2.40),
+    tvWoodMat
+  );
+  consoleBot.position.y = 0.083;
   consoleBot.castShadow = true;
   consoleBot.receiveShadow = true;
   tvConsole.add(consoleBot);
 
-  // Sculpted longitudinal & cross under-apron stretcher frame connecting the 6 legs
-  for (const sx of [-0.18, 0.18]) {
-    const longStretcher = new THREE.Mesh(
-      createBeveledBox(0.028, 0.032, 2.08, 0.006, 2),
-      darkOakMat
-    );
-    longStretcher.position.set(sx, 0.146, 0);
-    tvConsole.add(longStretcher);
-  }
-  for (const sz of [-1.02, 0, 1.02]) {
-    const crossStretcher = new THREE.Mesh(
-      createBeveledBox(0.38, 0.030, 0.028, 0.006, 2),
-      darkOakMat
-    );
-    crossStretcher.position.set(0, 0.146, sz);
-    tvConsole.add(crossStretcher);
+  const plinthSkirt = new THREE.Mesh(
+    new THREE.BoxGeometry(0.56, 0.022, 2.34),
+    tvWoodDeepMat
+  );
+  plinthSkirt.position.y = 0.057;
+  tvConsole.add(plinthSkirt);
+
+  for (const fx of [-0.24, 0.24]) {
+    for (const fz of [-1.11, 0, 1.11]) {
+      const isCorner = fz !== 0;
+      const bracketFoot = new THREE.Mesh(
+        new THREE.BoxGeometry(isCorner ? 0.088 : 0.068, 0.064, isCorner ? 0.125 : 0.080),
+        tvWoodDeepMat
+      );
+      bracketFoot.position.set(fx, 0.032, fz);
+      bracketFoot.castShadow = true;
+      bracketFoot.receiveShadow = true;
+      tvConsole.add(bracketFoot);
+    }
   }
 
-  // Deep dark recessed interior cavity backing so TV console bays have strong 3D depth (纵深感)
+  // Single clean solid backing panel + crisp sharp-edged side walls
   const carcass = new THREE.Mesh(
-    createBeveledBox(0.028, 0.39, 2.24, 0.006, 2),
-    cavityDarkMat
+    new THREE.BoxGeometry(0.022, 0.49, 2.28),
+    tvWoodDeepMat
   );
-  carcass.position.set(0.24, 0.385, 0);
+  carcass.position.set(0.25, 0.335, 0);
+  carcass.receiveShadow = true;
   tvConsole.add(carcass);
 
-  const cavityCeiling = new THREE.Mesh(
-    createBeveledBox(0.48, 0.012, 2.20, 0.003, 1),
-    cavityDarkMat
-  );
-  cavityCeiling.position.set(0.02, 0.568, 0);
-  tvConsole.add(cavityCeiling);
+  const outerSideGeo = new THREE.BoxGeometry(0.56, 0.49, 0.040);
+  for (const sz of [-1.14, 1.14]) {
+    const sideWall = new THREE.Mesh(outerSideGeo, tvWoodMat);
+    sideWall.position.set(0, 0.335, sz);
+    sideWall.castShadow = true;
+    sideWall.receiveShadow = true;
+    tvConsole.add(sideWall);
 
-  const midShelf = new THREE.Mesh(
-    createBeveledBox(0.51, 0.026, 0.72, 0.006, 2),
-    oakMat
-  );
-  midShelf.position.set(-0.005, 0.405, 0);
-  tvConsole.add(midShelf);
-
-  // InstancedMesh for 4 Vertical Structural Dividers & Outer Side Walls of TV Console
-  const vPanelGeo = createBeveledBox(0.52, 0.39, 0.032, 0.007, 2);
-  const consoleDividersInst = new THREE.InstancedMesh(vPanelGeo, oakMat, 4);
-  consoleDividersInst.castShadow = true;
-  const dividerZs = [-1.11, -0.37, 0.37, 1.11];
-  for (let i = 0; i < dividerZs.length; i++) {
-    _instMat.makeTranslation(6.76, 0.385, -5.08 + dividerZs[i]);
-    consoleDividersInst.setMatrixAt(i, _instMat);
+    const sideInset = new THREE.Mesh(
+      new THREE.BoxGeometry(0.42, 0.36, 0.010),
+      tvWoodDeepMat
+    );
+    sideInset.position.set(0, 0.335, sz + (sz < 0 ? -0.017 : 0.017));
+    tvConsole.add(sideInset);
   }
-  consoleDividersInst.instanceMatrix.needsUpdate = true;
-  consoleDividersInst.computeBoundingSphere();
-  group.add(consoleDividersInst);
 
-  // Left & Right Interactive Louvered Cabinet Doors (7 angled wooden slats per door!)
-  for (const sz of [-0.74, 0.74]) {
+  const lowerDivGeo = new THREE.BoxGeometry(0.53, 0.275, 0.034);
+  for (const sz of [-0.38, 0.38]) {
+    const div = new THREE.Mesh(lowerDivGeo, tvWoodMat);
+    div.position.set(-0.005, 0.232, sz);
+    div.castShadow = true;
+    div.receiveShadow = true;
+    tvConsole.add(div);
+  }
+
+  // Clean flush sharp-edged front vertical stiles (平齐硬朗直边框，不凸出发圆!)
+  for (const [pz, pH, pY] of [
+    [-1.14, 0.47, 0.335],
+    [1.14, 0.47, 0.335],
+    [-0.38, 0.268, 0.232],
+    [0.38, 0.268, 0.232],
+  ] as const) {
+    const stilePost = new THREE.Mesh(
+      new THREE.BoxGeometry(0.016, pH, 0.048),
+      tvWoodMat
+    );
+    stilePost.position.set(-0.272, pY, pz);
+    tvConsole.add(stilePost);
+  }
+
+  // Left & Right Interactive Flush-Framed Flat-Recessed Cabinet Doors + Stepped Vertical Bar Pulls!
+  for (const sz of [-0.76, 0.76]) {
     const hingeSide: -1 | 1 = sz < 0 ? -1 : 1;
     const doorFrame = new THREE.Group();
 
-    const moldedDoor = createMoldedDrawerFront(
-      0.69,
-      0.37,
-      0.026,
-      'x',
-      drawerWhiteMat,
-      drawerMoldingMat,
-      handleBrassMat,
-      -1,
-      (-hingeSide) as -1 | 1
+    // Flat recessed inner panel
+    const doorBack = new THREE.Mesh(
+      new THREE.BoxGeometry(0.014, 0.260, 0.694),
+      tvWoodDeepMat
     );
-    doorFrame.add(moldedDoor);
+    doorBack.position.set(0.004, 0, 0);
+    doorFrame.add(doorBack);
 
-    for (let s = 0; s < 7; s++) {
-      const slat = new THREE.Mesh(
-        createBeveledBox(0.010, 0.013, 0.52, 0.003, 1),
-        oakMat
-      );
-      slat.position.set(-0.013, -0.105 + s * 0.035, 0);
-      slat.rotation.z = 0.22;
-      slat.castShadow = true;
-      doorFrame.add(slat);
+    // Flush sharp-edged Shaker rails & stiles (clean 7mm recess, zero bulging rounded blocks!)
+    for (const fy of [-0.112, 0.112]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.020, 0.040, 0.70), tvWoodMat);
+      rail.position.set(-0.001, fy, 0);
+      rail.castShadow = true;
+      doorFrame.add(rail);
     }
+    for (const fz of [-0.322, 0.322]) {
+      const stile = new THREE.Mesh(new THREE.BoxGeometry(0.020, 0.264, 0.056), tvWoodMat);
+      stile.position.set(-0.001, 0, fz);
+      stile.castShadow = true;
+      doorFrame.add(stile);
+    }
+    // Crisp stepped inner shadow molding lip
+    for (const fy of [-0.088, 0.088]) {
+      const innerBead = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.009, 0.588), tvWoodDeepMat);
+      innerBead.position.set(-0.001, fy, 0);
+      doorFrame.add(innerBead);
+    }
+    for (const fz of [-0.290, 0.290]) {
+      const innerBead = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.184, 0.009), tvWoodDeepMat);
+      innerBead.position.set(-0.001, 0, fz);
+      doorFrame.add(innerBead);
+    }
+
+    // Distinct Sleek Stepped Vertical Bar Pull on TV console doors!
+    const barHandle = createAmericanHandle('bar', -1);
+    barHandle.position.set(-0.010, 0, -hingeSide * 0.305);
+    doorFrame.add(barHandle);
 
     registerCabinetDoor({
       id: sz < 0 ? 'liv_cab_tv_left' : 'liv_cab_tv_right',
-      label: sz < 0 ? '电视柜左百叶柜门' : '电视柜右百叶柜门',
+      label: sz < 0 ? '电视柜左镶板柜门' : '电视柜右镶板柜门',
       room: 'living',
       parent: tvConsole,
       centerX: -0.265,
-      centerY: 0.385,
+      centerY: 0.232,
       centerZ: sz,
-      width: 0.69,
-      height: 0.37,
+      width: 0.70,
+      height: 0.268,
       thickness: 0.026,
       facingAxis: 'x',
       facingSign: -1,
       hingeSide,
       openSign: hingeSide,
-      doorMat: drawerWhiteMat,
-      moldingMat: drawerMoldingMat,
+      doorMat: tvWoodMat,
+      moldingMat: tvWoodDeepMat,
       handleMat: handleBrassMat,
       customDoorGroup: doorFrame,
     });
   }
 
-  // Center Lower Molded AV Storage Drawer
-  const centerConsoleDrawer = createMoldedDrawerFront(
-    0.70,
-    0.175,
-    0.026,
-    'x',
-    drawerWhiteMat,
-    drawerMoldingMat,
-    handleBrassMat,
-    -1
-  );
-  centerConsoleDrawer.position.set(-0.265, 0.285, 0);
-  tvConsole.add(centerConsoleDrawer);
-
-  // Detailed Home Theater AV Receiver & Game Console Deck in Upper Center Bay
-  const deckChassisMat = mat({ color: 0x221d30, roughness: 0.28, metalness: 0.55 });
-  const deckGlassMat = mat({ color: 0x100d18, roughness: 0.12, metalness: 0.20 });
-  const mediaDeck = new THREE.Mesh(
-    createBeveledBox(0.38, 0.072, 0.46, 0.008, 2),
-    deckChassisMat
-  );
-  mediaDeck.position.set(-0.04, 0.455, -0.08);
-  mediaDeck.castShadow = true;
-  tvConsole.add(mediaDeck);
-
-  // Front VFD display window & brushed brass rotary volume/selector knobs
-  const deckDisplay = new THREE.Mesh(
-    createBeveledBox(0.008, 0.032, 0.22, 0.002, 1),
-    deckGlassMat
-  );
-  deckDisplay.position.set(-0.232, 0.458, -0.08);
-  tvConsole.add(deckDisplay);
-
-  for (const [kz, kr] of [
-    [-0.25, 0.016],
-    [0.09, 0.013],
+  // Two Sleek Matte-Black Media Players / Consoles stacked in upper & lower center open bays (matching Image 1!)
+  for (const [py, ph, pw, pd] of [
+    [0.422, 0.054, 0.48, 0.34],
+    [0.128, 0.058, 0.44, 0.32],
   ] as const) {
-    const knob = new THREE.Mesh(
-      new THREE.CylinderGeometry(kr, kr, 0.018, 14),
-      handleBrassMat
+    const box = new THREE.Mesh(
+      createBeveledBox(pd, ph, pw, 0.009, 2),
+      tvCharcoalMat
     );
-    knob.rotation.z = Math.PI / 2;
-    knob.position.set(-0.236, 0.455, kz);
-    tvConsole.add(knob);
+    box.position.set(-0.04, py, 0);
+    box.castShadow = true;
+    box.receiveShadow = true;
+    outlines.addOutline(box, 1.018);
+    tvConsole.add(box);
+
+    // Subtle front gloss slot & tiny white power indicator
+    const slot = new THREE.Mesh(
+      createBeveledBox(0.006, 0.008, pw * 0.52, 0.002, 1),
+      tvCharcoalTrimMat
+    );
+    slot.position.set(-0.04 - pd / 2 - 0.001, py + 0.004, -0.03);
+    tvConsole.add(slot);
   }
 
-  const deckLed = new THREE.Mesh(
-    new THREE.SphereGeometry(0.007, 8, 8),
-    new THREE.MeshBasicMaterial({ color: 0x56d8ff })
-  );
-  deckLed.position.set(-0.233, 0.458, 0.05);
-  tvConsole.add(deckLed);
+  // Compact Matte-Black Studio Monitor Speakers with Smooth Gradient Cabinets & Cones (matching Image 1!)
+  const speakerCabMat = tvCharcoalMat;
+  const speakerBaffleMat = mat({
+    map: tvCharcoalGradTex,
+    color: 0xb8bcc8,
+    roughness: 0.48,
+    metalness: 0.16,
+  });
+  const speakerConeMat = mat({
+    map: tvSpeakerConeTex,
+    color: 0xffffff,
+    roughness: 0.42,
+    metalness: 0.18,
+  });
+  const speakerRingMat = mat({ color: 0x3b404e, roughness: 0.32, metalness: 0.45 });
 
-  // Stacked game disc cases next to the AV console inside center bay
-  for (const [gy, gcol] of [
-    [0.428, 0x2d549e],
-    [0.446, 0xb83b4e],
-  ] as const) {
-    const gameCase = new THREE.Mesh(
-      createBeveledBox(0.19, 0.016, 0.14, 0.003, 1),
-      mat({ color: gcol, roughness: 0.42 })
-    );
-    gameCase.position.set(-0.08, gy, 0.24);
-    gameCase.rotation.y = 0.08;
-    tvConsole.add(gameCase);
-  }
-
-  // Pair of Hi-Fi Warm Honey-Wood Bookshelf Speakers flanking the TV on the Console Top
-  const speakerCabMat = mat({ color: 0xd99f74, roughness: 0.76, metalness: 0.0, woodLacquer: 0.25 });
-  const speakerBaffleMat = mat({ color: 0x423a52, roughness: 0.90, metalness: 0.0 });
-  const speakerConeMat = mat({ color: 0x554c68, roughness: 0.88, metalness: 0.0 });
-  for (const spZ of [-1.00, 1.00]) {
+  // Pair of sleek matte-black bookshelf speakers flanking the TV on the Console Top
+  for (const spZ of [-1.03, 1.03]) {
     const hiFiGroup = new THREE.Group();
-    hiFiGroup.position.set(-0.02, 0.62, spZ);
+    hiFiGroup.position.set(-0.02, 0.625, spZ);
     hiFiGroup.rotation.y = spZ < 0 ? -0.10 : 0.10;
 
     const cab = new THREE.Mesh(
-      createBeveledBox(0.22, 0.34, 0.19, 0.010, 3),
+      createBeveledBox(0.19, 0.28, 0.16, 0.012, 3),
       speakerCabMat
     );
-    cab.position.y = 0.175;
+    cab.position.y = 0.145;
     cab.castShadow = true;
-    outlines.addOutline(cab, 1.022);
+    cab.receiveShadow = true;
+    outlines.addOutline(cab, 1.02);
     hiFiGroup.add(cab);
 
     const baffle = new THREE.Mesh(
-      createBeveledBox(0.012, 0.30, 0.16, 0.004, 2),
+      createBeveledBox(0.010, 0.245, 0.132, 0.004, 2),
       speakerBaffleMat
     );
-    baffle.position.set(-0.108, 0.175, 0);
+    baffle.position.set(-0.092, 0.145, 0);
     hiFiGroup.add(baffle);
 
-    // Copper-ringed main woofer + silk-dome tweeter + bass-reflex port
+    // Subtle charcoal-ringed woofer + smooth gradient cone + silk-dome tweeter (clean modern look!)
     const wooferRing = new THREE.Mesh(
-      new THREE.TorusGeometry(0.052, 0.006, 10, 20),
-      handleBrassMat
+      new THREE.TorusGeometry(0.044, 0.005, 10, 22),
+      speakerRingMat
     );
     wooferRing.rotation.y = Math.PI / 2;
-    wooferRing.position.set(-0.115, 0.125, 0);
+    wooferRing.position.set(-0.099, 0.102, 0);
     hiFiGroup.add(wooferRing);
 
     const wooferCone = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.048, 0.022, 0.016, 16),
+      new THREE.CylinderGeometry(0.041, 0.018, 0.014, 20),
       speakerConeMat
     );
     wooferCone.rotation.z = Math.PI / 2;
-    wooferCone.position.set(-0.112, 0.125, 0);
+    wooferCone.position.set(-0.096, 0.102, 0);
     hiFiGroup.add(wooferCone);
 
     const tweeterRing = new THREE.Mesh(
-      new THREE.TorusGeometry(0.024, 0.004, 8, 16),
-      handleBrassMat
+      new THREE.TorusGeometry(0.020, 0.0035, 8, 18),
+      speakerRingMat
     );
     tweeterRing.rotation.y = Math.PI / 2;
-    tweeterRing.position.set(-0.115, 0.245, 0);
+    tweeterRing.position.set(-0.099, 0.205, 0);
     hiFiGroup.add(tweeterRing);
 
     const tweeterDome = new THREE.Mesh(
-      new THREE.SphereGeometry(0.018, 12, 10),
+      new THREE.SphereGeometry(0.015, 14, 10),
       speakerConeMat
     );
     tweeterDome.scale.set(0.45, 1, 1);
-    tweeterDome.position.set(-0.114, 0.245, 0);
+    tweeterDome.position.set(-0.098, 0.205, 0);
     hiFiGroup.add(tweeterDome);
 
     tvConsole.add(hiFiGroup);
@@ -1295,116 +2523,92 @@ export function buildLivingRoom(
     }
   }
 
-  // InstancedMesh for 6 Turned Splayed Oak Legs under TV Console
-  const consoleLegGeo = createTurnedLegGeometry(0.024, 0.014, 0.175);
-  const consoleLegsInst = new THREE.InstancedMesh(consoleLegGeo, oakMat, 6);
-  consoleLegsInst.castShadow = true;
-  let cLegIdx = 0;
-  const tvConsoleOrigin = new THREE.Vector3(6.76, 0, -5.08);
-  for (const lz of [-1.02, 0, 1.02]) {
-    for (const lx of [-0.21, 0.21]) {
-      consoleLegsInst.setMatrixAt(
-        cLegIdx++,
-        composeSplayedLegMatrix(lx, 0.168, lz, 0.175, 0.14, lz === 0 ? 0 : 0.08, tvConsoleOrigin)
-      );
-    }
-  }
-  consoleLegsInst.instanceMatrix.needsUpdate = true;
-  consoleLegsInst.computeBoundingSphere();
-  group.add(consoleLegsInst);
-
   group.add(tvConsole);
   addBoxCollider('col_tv_console', 6.76, 0.42, -5.08, 0.64, 0.84, 2.40);
 
   // =========================================================================
-  // 4. ENLARGED 65-INCH FLAT-SCREEN TV WITH MULTI-LAYER BEZEL & SOUNDBAR CHIN
+  // =========================================================================
+  // 4. SLEEK MISIDE FLAT-SCREEN TV WITH WIDE CHAMFERED STAND & SMOOTH GRADIENT SCREEN
   // =========================================================================
   const tvGroup = new THREE.Group();
-  tvGroup.position.set(6.78, 0.62, -5.08);
-  const tvMat = mat({ color: 0x1e1929, roughness: 0.24, metalness: 0.58 });
-  const tvTrimMat = mat({ color: 0x3b334f, roughness: 0.28, metalness: 0.68 });
+  tvGroup.position.set(6.78, 0.625, -5.08);
+  const tvMat = tvCharcoalMat;
+  const tvTrimMat = tvCharcoalTrimMat;
 
-  // Heavy die-cast gunmetal pedestal base + twin aerodynamic support necks
+  // Wide modern beveled charcoal pedestal bar + single centered sculpted neck (matching Image 1!)
   const tvBase = new THREE.Mesh(
-    createBeveledSlab(0.30, 0.018, 0.68, 0.032, 0.006),
-    tvTrimMat
-  );
-  tvBase.position.y = 0.009;
-  tvBase.castShadow = true;
-  outlines.addOutline(tvBase, 1.02);
-  tvGroup.add(tvBase);
-
-  for (const nz of [-0.18, 0.18]) {
-    const tvNeck = new THREE.Mesh(
-      createBeveledBox(0.048, 0.19, 0.065, 0.009, 2),
-      tvMat
-    );
-    tvNeck.position.set(0.025, 0.10, nz);
-    tvNeck.rotation.z = -0.12;
-    tvNeck.castShadow = true;
-    tvGroup.add(tvNeck);
-  }
-
-  // Outer dark titanium TV chassis frame (1.76m wide x 1.02m tall)
-  const tvFrame = new THREE.Mesh(
-    createBeveledBox(0.040, 1.02, 1.76, 0.012, 3),
+    createBeveledSlab(0.24, 0.020, 0.88, 0.030, 0.007),
     tvMat
   );
-  tvFrame.position.y = 0.68;
+  tvBase.position.set(0.01, 0.010, 0);
+  tvBase.castShadow = true;
+  tvBase.receiveShadow = true;
+  outlines.addOutline(tvBase, 1.018);
+  tvGroup.add(tvBase);
+
+  const tvNeck = new THREE.Mesh(
+    createBeveledBox(0.056, 0.17, 0.16, 0.012, 2),
+    tvMat
+  );
+  tvNeck.position.set(0.032, 0.095, 0);
+  tvNeck.rotation.z = -0.10;
+  tvNeck.castShadow = true;
+  tvGroup.add(tvNeck);
+
+  // Clean slim matte-charcoal TV chassis frame (1.76m wide x 1.00m tall)
+  const tvFrame = new THREE.Mesh(
+    createBeveledBox(0.034, 1.00, 1.76, 0.010, 3),
+    tvMat
+  );
+  tvFrame.position.y = 0.665;
   tvFrame.castShadow = true;
-  outlines.addOutline(tvFrame, 1.015);
+  tvFrame.receiveShadow = true;
+  outlines.addOutline(tvFrame, 1.014);
   tvGroup.add(tvFrame);
 
-  // Inner chamfered metallic bezel surround framing the glass display
+  // Subtle slim inner bezel surround framing the glass display
   for (const [by, bh] of [
-    [1.178, 0.018],
-    [0.198, 0.018],
+    [1.156, 0.014],
+    [0.176, 0.020],
   ] as const) {
     const hBezel = new THREE.Mesh(
-      createBeveledBox(0.044, bh, 1.74, 0.004, 2),
+      createBeveledBox(0.038, bh, 1.74, 0.004, 2),
       tvTrimMat
     );
     hBezel.position.set(-0.002, by, 0);
     tvGroup.add(hBezel);
   }
-  for (const bz of [-0.865, 0.865]) {
+  for (const bz of [-0.866, 0.866]) {
     const vBezel = new THREE.Mesh(
-      createBeveledBox(0.044, 0.99, 0.018, 0.004, 2),
+      createBeveledBox(0.038, 0.98, 0.014, 0.004, 2),
       tvTrimMat
     );
-    vBezel.position.set(-0.002, 0.688, bz);
+    vBezel.position.set(-0.002, 0.668, bz);
     tvGroup.add(vBezel);
   }
 
-  // Sculpted rear electronics enclosure with horizontal cooling louver grooves
+  // Smooth tapered rear electronics housing
   const tvRear = new THREE.Mesh(
-    createBeveledBox(0.038, 0.68, 1.24, 0.014, 2),
+    createBeveledBox(0.032, 0.64, 1.22, 0.014, 2),
     tvMat
   );
-  tvRear.position.set(0.028, 0.64, 0);
+  tvRear.position.set(0.024, 0.63, 0);
   tvGroup.add(tvRear);
 
-  // Brushed-metal bottom acoustic soundbar chin + center badge + standby LED
-  const tvChin = new THREE.Mesh(
-    createBeveledBox(0.046, 0.032, 1.75, 0.005, 2),
+  // Subtle tiny silver center emblem + standby indicator LED
+  const tvBadge = new THREE.Mesh(
+    createBeveledBox(0.005, 0.008, 0.042, 0.002, 1),
     tvTrimMat
   );
-  tvChin.position.set(-0.004, 0.176, 0);
-  tvGroup.add(tvChin);
-
-  const tvBadge = new THREE.Mesh(
-    createBeveledBox(0.008, 0.012, 0.065, 0.002, 1),
-    handleBrassMat
-  );
-  tvBadge.position.set(-0.026, 0.176, 0);
+  tvBadge.position.set(-0.022, 0.174, 0);
   tvGroup.add(tvBadge);
 
   const tvStandbyLedMat = new THREE.MeshBasicMaterial({ color: 0xff5268 });
   const tvStandbyLed = new THREE.Mesh(
-    new THREE.SphereGeometry(0.005, 8, 8),
+    new THREE.SphereGeometry(0.0045, 8, 8),
     tvStandbyLedMat
   );
-  tvStandbyLed.position.set(-0.025, 0.172, 0.78);
+  tvStandbyLed.position.set(-0.022, 0.174, 0.78);
   tvStandbyLed.userData.dynamic = true;
   tvGroup.add(tvStandbyLed);
 
@@ -1433,60 +2637,76 @@ export function buildLivingRoom(
   metaState.livingTv.score = 1200;
 
   const tvScreenMat = new THREE.MeshStandardMaterial({
-    map: textures.tvStandby,
-    emissiveMap: textures.tvStandby,
-    emissive: new THREE.Color(0xffe8d6),
-    emissiveIntensity: 0.18,
-    roughness: 0.56,
-    metalness: 0.04,
-    envMapIntensity: 0.06,
+    map: tvStandbyGradTex,
+    emissiveMap: tvStandbyGradTex,
+    emissive: new THREE.Color(0xd8e4ff),
+    emissiveIntensity: 0.24,
+    roughness: 0.34,
+    metalness: 0.12,
+    envMapIntensity: 0.14,
   });
   metaState.tvScreenMat = tvScreenMat;
-  const tvScreen = new THREE.Mesh(new THREE.PlaneGeometry(1.68, 0.94), tvScreenMat);
+  const tvScreen = new THREE.Mesh(new THREE.PlaneGeometry(1.70, 0.945), tvScreenMat);
   tvScreen.rotation.y = -Math.PI / 2;
-  tvScreen.position.set(-0.022, 0.688, 0);
+  tvScreen.position.set(-0.020, 0.668, 0);
   tvScreen.userData.dynamic = true;
   tvGroup.add(tvScreen);
   group.add(tvGroup);
 
-  // Recessed Floating Oak Wall Shelf above enlarged TV with Horizontal Slatted Back, Speakers, Books & Storage Boxes (Screenshot 2)
+  // American Hutch-Style Overhead Wall Shelf above TV (vertical beadboard back + crown molding + corbels)
   const wallShelf = new THREE.Group();
   wallShelf.position.set(7.06, 2.02, -5.08);
+  // Single clean solid-wood hutch back panel (一整块平整背板，无多余竖条)
   const wsBack = new THREE.Mesh(
-    createBeveledBox(0.016, 0.30, 1.72, 0.004, 2),
-    cavityDarkMat
+    new THREE.BoxGeometry(0.018, 0.30, 1.72),
+    tvWoodDeepMat
   );
-  wsBack.position.x = 0.115;
+  wsBack.position.x = 0.114;
+  wsBack.receiveShadow = true;
   wallShelf.add(wsBack);
-
-  // Horizontal wooden slats across the back of the floating TV shelf (matches Screenshot 2!)
-  for (let s = -2; s <= 2; s++) {
-    const hSlat = new THREE.Mesh(
-      createBeveledBox(0.012, 0.036, 1.70, 0.003, 1),
-      oakMat
-    );
-    hSlat.position.set(0.102, s * 0.056, 0);
-    wallShelf.add(hSlat);
-  }
 
   for (const sy of [-0.155, 0.155]) {
     const wsBoard = new THREE.Mesh(
-      createBeveledBox(0.26, 0.026, 1.76, 0.006, 2),
-      oakMat
+      createBeveledBox(sy > 0 ? 0.28 : 0.26, 0.026, sy > 0 ? 1.80 : 1.76, 0.006, 2),
+      tvWoodMat
     );
     wsBoard.position.y = sy;
     wsBoard.castShadow = true;
     wsBoard.receiveShadow = true;
+    outlines.addOutline(wsBoard, 1.014);
     wallShelf.add(wsBoard);
   }
+  // Stepped American Crown Molding Trim along Upper Shelf Cornice + Supporting Under-Corbels
+  const wsCrownLip = new THREE.Mesh(
+    createBeveledBox(0.295, 0.018, 1.83, 0.005, 2),
+    tvWoodDeepMat
+  );
+  wsCrownLip.position.y = 0.162;
+  wallShelf.add(wsCrownLip);
+
   for (const sz of [-0.865, 0.865]) {
     const wsSide = new THREE.Mesh(
-      createBeveledBox(0.26, 0.30, 0.026, 0.006, 2),
-      oakMat
+      createBeveledBox(0.26, 0.30, 0.032, 0.006, 2),
+      tvWoodMat
     );
     wsSide.position.z = sz;
     wsSide.castShadow = true;
     wallShelf.add(wsSide);
+
+    // Sculpted American Corbel Bracket beneath each end of the wall shelf
+    const corbelTop = new THREE.Mesh(
+      createBeveledBox(0.19, 0.045, 0.036, 0.006, 2),
+      tvWoodDeepMat
+    );
+    corbelTop.position.set(0.03, -0.190, sz);
+    wallShelf.add(corbelTop);
+
+    const corbelDrop = new THREE.Mesh(
+      createBeveledBox(0.095, 0.085, 0.032, 0.006, 2),
+      tvWoodMat
+    );
+    corbelDrop.position.set(0.075, -0.235, sz);
+    wallShelf.add(corbelDrop);
   }
   // Matte pastel macaron fabric & paper organizer boxes with fitted lids on the floating shelf
   const shelfGreenBoxMat = mat({
@@ -1534,35 +2754,53 @@ export function buildLivingRoom(
   wallShelf.add(shelfWhiteBox);
   const shelfWhiteLid = new THREE.Mesh(
     createBeveledBox(0.178, 0.020, 0.208, 0.004, 2),
-    oakMat
+    tvWoodMat
   );
   shelfWhiteLid.position.set(-0.01, 0.258, -0.52);
   wallShelf.add(shelfWhiteLid);
 
-  // Compact studio monitor speakers flanking books inside floating shelf
+  // Compact matte-black studio monitor speakers flanking books inside floating shelf (matching Image 1!)
   for (const spZ of [-0.72, 0.72]) {
     const spCab = new THREE.Mesh(
-      createBeveledBox(0.15, 0.22, 0.14, 0.006, 2),
+      createBeveledBox(0.16, 0.23, 0.145, 0.009, 2),
       speakerCabMat
     );
-    spCab.position.set(-0.01, -0.032, spZ);
+    spCab.position.set(-0.01, -0.026, spZ);
     spCab.castShadow = true;
+    spCab.receiveShadow = true;
+    outlines.addOutline(spCab, 1.02);
     wallShelf.add(spCab);
 
+    const spWooferRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.038, 0.004, 8, 18),
+      speakerRingMat
+    );
+    spWooferRing.rotation.y = Math.PI / 2;
+    spWooferRing.position.set(-0.092, -0.062, spZ);
+    wallShelf.add(spWooferRing);
+
     const woofer = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.038, 0.038, 0.01, 14),
+      new THREE.CylinderGeometry(0.036, 0.016, 0.012, 16),
       speakerConeMat
     );
     woofer.rotation.z = Math.PI / 2;
-    woofer.position.set(-0.088, -0.06, spZ);
+    woofer.position.set(-0.089, -0.062, spZ);
     wallShelf.add(woofer);
 
+    const spTweeterRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.017, 0.003, 8, 16),
+      speakerRingMat
+    );
+    spTweeterRing.rotation.y = Math.PI / 2;
+    spTweeterRing.position.set(-0.092, 0.024, spZ);
+    wallShelf.add(spTweeterRing);
+
     const tweeter = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.019, 0.019, 0.01, 12),
+      new THREE.SphereGeometry(0.013, 12, 10),
       speakerConeMat
     );
-    tweeter.rotation.z = Math.PI / 2;
-    tweeter.position.set(-0.088, 0.025, spZ);
+    tweeter.scale.set(0.45, 1, 1);
+    tweeter.position.set(-0.090, 0.024, spZ);
     wallShelf.add(tweeter);
   }
   // Sculpted light-toned books, matched manga mini-set, horizontal stack & retro game cartridge inside floating TV shelf
@@ -1602,14 +2840,14 @@ export function buildLivingRoom(
     const nextOn = !metaState.livingTv.isOn;
     metaState.livingTv.isOn = nextOn;
     metaState.tvMetaOn = nextOn;
-    const activeTex = nextOn && metaState.livingTv.texture ? metaState.livingTv.texture : textures.tvStandby;
+    const activeTex = nextOn && metaState.livingTv.texture ? metaState.livingTv.texture : tvStandbyGradTex;
     tvScreenMat.color.setHex(nextOn ? 0x101018 : 0xffffff);
     tvScreenMat.map = activeTex;
     tvScreenMat.emissiveMap = activeTex;
-    tvScreenMat.emissive.setHex(nextOn ? 0xffffff : 0xffe8d6);
-    tvScreenMat.emissiveIntensity = nextOn ? 0.62 : 0.16;
-    tvScreenMat.roughness = nextOn ? 0.42 : 0.56;
-    tvScreenMat.envMapIntensity = nextOn ? 0.03 : 0.06;
+    tvScreenMat.emissive.setHex(nextOn ? 0xffffff : 0xd8e4ff);
+    tvScreenMat.emissiveIntensity = nextOn ? 0.62 : 0.24;
+    tvScreenMat.roughness = nextOn ? 0.42 : 0.34;
+    tvScreenMat.envMapIntensity = nextOn ? 0.03 : 0.14;
     tvScreenMat.needsUpdate = true;
     if (metaState.livingTv.ledMat) {
       metaState.livingTv.ledMat.color.setHex(nextOn ? 0x52ff9a : 0xff5268);
@@ -1630,26 +2868,115 @@ export function buildLivingRoom(
   });
 
   // =========================================================================
-  // 5. TALL 3-TIER OPEN WOODEN BOOKCASE WITH RECESSED CAVITY & LOUVERED BASE
-  //    (X = -0.98, Z = -1.25) + 3-DRAWER CHEST OF DRAWERS (Screenshot 2)
+  // 5. AMERICAN HERITAGE BOOKCASE & 3-DRAWER CHEST (テレビ柜同款立体双色线脚与凸起斜边镶芯板)
   // =========================================================================
+  // Sharp-Edged Flush American Recessed-Panel Drawer / Door Builder (平整内凹 + 齐平硬朗直框 + 多样复古拉手!)
+  const buildTvStyleRaisedDrawer = (
+    drwW: number,
+    drwH: number,
+    dualHandles: boolean,
+    handleStyle: 'bail' | 'cup' | 'ring' | 'octKnob' = 'cup'
+  ): THREE.Group => {
+    const g = new THREE.Group();
+
+    // 1) Crisp flat recessed center panel (平整内凹芯板)
+    const recessBack = new THREE.Mesh(
+      new THREE.BoxGeometry(0.012, drwH - 0.004, drwW - 0.004),
+      tvWoodDeepMat
+    );
+    recessBack.position.x = -0.004;
+    recessBack.receiveShadow = true;
+    g.add(recessBack);
+
+    // 2) Flush sharp 90-degree outer Shaker rails & stiles (齐平硬朗直框，不再凸出发圆!)
+    const railH = Math.min(0.028, drwH * 0.20);
+    const stileW = Math.min(0.040, drwW * 0.12);
+    for (const ry of [-(drwH - railH) * 0.5, (drwH - railH) * 0.5]) {
+      const rail = new THREE.Mesh(
+        new THREE.BoxGeometry(0.018, railH, drwW),
+        tvWoodMat
+      );
+      rail.position.set(0.001, ry, 0);
+      rail.castShadow = true;
+      rail.receiveShadow = true;
+      g.add(rail);
+    }
+    for (const sz of [-(drwW - stileW) * 0.5, (drwW - stileW) * 0.5]) {
+      const stile = new THREE.Mesh(
+        new THREE.BoxGeometry(0.018, drwH, stileW),
+        tvWoodMat
+      );
+      stile.position.set(0.001, 0, sz);
+      stile.castShadow = true;
+      stile.receiveShadow = true;
+      g.add(stile);
+    }
+
+    // 3) Slim crisp inner step shadow bead (8mm recessed sharp inner molding)
+    const innerW = drwW - stileW * 2;
+    const innerH = drwH - railH * 2;
+    if (innerW > 0.05 && innerH > 0.03) {
+      for (const ry of [-(innerH * 0.5 - 0.004), innerH * 0.5 - 0.004]) {
+        const innerStep = new THREE.Mesh(
+          new THREE.BoxGeometry(0.014, 0.008, innerW + 0.002),
+          tvWoodDeepMat
+        );
+        innerStep.position.set(-0.001, ry, 0);
+        g.add(innerStep);
+      }
+      for (const sz of [-(innerW * 0.5 - 0.004), innerW * 0.5 - 0.004]) {
+        const innerStep = new THREE.Mesh(
+          new THREE.BoxGeometry(0.014, innerH + 0.002, 0.008),
+          tvWoodDeepMat
+        );
+        innerStep.position.set(-0.001, 0, sz);
+        g.add(innerStep);
+      }
+    }
+
+    // 4) Distinct American Hardware Handle(s) mounted cleanly on the recessed face
+    const handleZs = dualHandles ? [-drwW * 0.25, drwW * 0.25] : [0];
+    for (const hz of handleZs) {
+      const hObj = createAmericanHandle(handleStyle, 1);
+      hObj.position.set(0.002, 0, hz);
+      g.add(hObj);
+    }
+
+    return g;
+  };
+
   const shelf = new THREE.Group();
   shelf.position.set(-0.98, 0, -1.25);
 
+  // 1) Crisp Sharp-Edged 3-Step American Crown Top (硬朗直角阶梯顶冠，无圆角凸出!)
   const bcTop = new THREE.Mesh(
-    createBeveledSlab(0.32, 0.036, 0.96, 0.034, 0.010),
-    oakMat
+    new THREE.BoxGeometry(0.38, 0.030, 1.02),
+    tvWoodMat
   );
-  bcTop.position.y = 1.62;
+  bcTop.position.set(0.014, 1.635, 0);
   bcTop.castShadow = true;
   bcTop.receiveShadow = true;
-  outlines.addOutline(bcTop, 1.02);
   shelf.add(bcTop);
 
+  const bcCrownCove = new THREE.Mesh(
+    new THREE.BoxGeometry(0.35, 0.020, 0.98),
+    tvWoodDeepMat
+  );
+  bcCrownCove.position.set(0.010, 1.610, 0);
+  shelf.add(bcCrownCove);
+
+  const bcFrieze = new THREE.Mesh(
+    new THREE.BoxGeometry(0.33, 0.014, 0.94),
+    tvWoodMat
+  );
+  bcFrieze.position.set(0.006, 1.593, 0);
+  shelf.add(bcFrieze);
+
+  // 2) Crisp Flat Open Shelf Tiers
   for (const sy of [1.26, 0.91, 0.56]) {
     const bcTier = new THREE.Mesh(
-      createBeveledBox(0.28, 0.028, 0.88, 0.007, 2),
-      oakMat
+      new THREE.BoxGeometry(0.295, 0.026, 0.88),
+      tvWoodMat
     );
     bcTier.position.y = sy;
     bcTier.castShadow = true;
@@ -1657,32 +2984,61 @@ export function buildLivingRoom(
     shelf.add(bcTier);
   }
 
+  // 3) Crisp Sharp-Edged Baseboard Plinth + Straight Tapered Feet
   const bcBot = new THREE.Mesh(
-    createBeveledSlab(0.31, 0.034, 0.94, 0.032, 0.010),
-    oakMat
+    new THREE.BoxGeometry(0.365, 0.028, 0.99),
+    tvWoodMat
   );
-  bcBot.position.y = 0.18;
+  bcBot.position.set(0.010, 0.088, 0);
   bcBot.castShadow = true;
   bcBot.receiveShadow = true;
   shelf.add(bcBot);
 
-  for (const sz of [-0.44, 0.44]) {
-    const sidePanel = new THREE.Mesh(
-      createBeveledBox(0.29, 1.44, 0.034, 0.009, 2),
-      oakMat
-    );
-    sidePanel.position.set(0, 0.90, sz);
-    sidePanel.castShadow = true;
-    outlines.addOutline(sidePanel, 1.018);
-    shelf.add(sidePanel);
+  const bcPlinthSkirt = new THREE.Mesh(
+    new THREE.BoxGeometry(0.335, 0.020, 0.94),
+    tvWoodDeepMat
+  );
+  bcPlinthSkirt.position.set(0.006, 0.064, 0);
+  shelf.add(bcPlinthSkirt);
+
+  for (const fx of [-0.11, 0.13]) {
+    for (const fz of [-0.42, 0.42]) {
+      const bFoot = new THREE.Mesh(
+        new THREE.BoxGeometry(0.070, 0.060, 0.095),
+        tvWoodDeepMat
+      );
+      bFoot.position.set(fx, 0.030, fz);
+      bFoot.castShadow = true;
+      shelf.add(bFoot);
+    }
   }
 
-  // Deep warm-dark recessed back panel for strong 3D shelf cavity depth (纵深感)
+  // 4) Flush Crisp Side Walls with Recessed Side Frame (齐平直框，不再突出圆柱!)
+  for (const sz of [-0.44, 0.44]) {
+    const sidePanel = new THREE.Mesh(
+      new THREE.BoxGeometry(0.32, 1.48, 0.038),
+      tvWoodMat
+    );
+    sidePanel.position.set(0, 0.845, sz);
+    sidePanel.castShadow = true;
+    sidePanel.receiveShadow = true;
+    shelf.add(sidePanel);
+
+    const sideInset = new THREE.Mesh(
+      new THREE.BoxGeometry(0.21, 1.28, 0.010),
+      tvWoodDeepMat
+    );
+    sideInset.position.set(0, 0.845, sz + (sz < 0 ? -0.016 : 0.016));
+    shelf.add(sideInset);
+  }
+
+  // 5) Single Clean Solid-Wood Backing Panel (一整块平整背板)
   const bcBack = new THREE.Mesh(
-    createBeveledBox(0.022, 1.42, 0.86, 0.005, 2),
-    cavityDarkMat
+    new THREE.BoxGeometry(0.020, 1.48, 0.86),
+    tvWoodDeepMat
   );
-  bcBack.position.set(-0.132, 0.90, 0);
+  bcBack.position.set(-0.142, 0.845, 0);
+  bcBack.receiveShadow = true;
   shelf.add(bcBack);
 
   // Two cozy linen storage boxes paired with generous open book zones on the upper bookcase tiers
@@ -1732,39 +3088,103 @@ export function buildLivingRoom(
     shelf.add(grommet);
   }
 
-  // 3-Drawer Wooden Chest of Drawers beside the Bookcase with 2-Drawer Top Organizer (Screenshot 1)
+  // Crisp Sharp-Edged American 3-Drawer Chest with Half-Moon Shell Cup Pulls (齐平硬朗直框 + 贝壳杯形拉手!)
   const chestGroup = new THREE.Group();
   chestGroup.position.set(-0.92, 0, -2.52);
+
   const chestBody = new THREE.Mesh(
-    createBeveledBox(0.43, 0.78, 0.79, 0.020, 3),
-    oakMat
+    new THREE.BoxGeometry(0.42, 0.72, 0.74),
+    tvWoodDeepMat
   );
-  chestBody.position.y = 0.45;
+  chestBody.position.y = 0.455;
   chestBody.castShadow = true;
   chestBody.receiveShadow = true;
-  outlines.addOutline(chestBody, 1.018);
   chestGroup.add(chestBody);
 
+  // Crisp Sharp-Edged 3-Step Top Crown (硬朗直角阶梯顶线，不发圆)
   const chestTop = new THREE.Mesh(
-    createBeveledSlab(0.47, 0.040, 0.84, 0.044, 0.013),
-    oakMat
+    new THREE.BoxGeometry(0.49, 0.030, 0.86),
+    tvWoodMat
   );
-  chestTop.position.y = 0.858;
+  chestTop.position.set(0.010, 0.862, 0);
   chestTop.castShadow = true;
+  chestTop.receiveShadow = true;
   chestGroup.add(chestTop);
 
-  for (const dy of [0.22, 0.45, 0.68]) {
-    const drw = createMoldedDrawerFront(
-      0.70,
-      0.20,
-      0.024,
-      'x',
-      drawerWhiteMat,
-      drawerMoldingMat,
-      handleBrassMat,
-      1
+  const chestUnderCrown = new THREE.Mesh(
+    new THREE.BoxGeometry(0.46, 0.020, 0.825),
+    tvWoodDeepMat
+  );
+  chestUnderCrown.position.set(0.006, 0.837, 0);
+  chestGroup.add(chestUnderCrown);
+
+  const chestFrieze = new THREE.Mesh(
+    new THREE.BoxGeometry(0.44, 0.014, 0.80),
+    tvWoodMat
+  );
+  chestFrieze.position.set(0.004, 0.820, 0);
+  chestGroup.add(chestFrieze);
+
+  // Crisp Base Plinth + Straight Tapered Feet
+  const chestBot = new THREE.Mesh(
+    new THREE.BoxGeometry(0.475, 0.028, 0.845),
+    tvWoodMat
+  );
+  chestBot.position.set(0.008, 0.084, 0);
+  chestBot.castShadow = true;
+  chestBot.receiveShadow = true;
+  chestGroup.add(chestBot);
+
+  const chestPlinthSkirt = new THREE.Mesh(
+    new THREE.BoxGeometry(0.445, 0.020, 0.805),
+    tvWoodDeepMat
+  );
+  chestPlinthSkirt.position.set(0.004, 0.060, 0);
+  chestGroup.add(chestPlinthSkirt);
+
+  for (const fx of [-0.17, 0.19]) {
+    for (const fz of [-0.35, 0.35]) {
+      const bFoot = new THREE.Mesh(
+        new THREE.BoxGeometry(0.072, 0.060, 0.095),
+        tvWoodDeepMat
+      );
+      bFoot.position.set(fx, 0.030, fz);
+      bFoot.castShadow = true;
+      chestGroup.add(bFoot);
+    }
+  }
+
+  // Flush Crisp Side Walls (齐平直框，不再突出圆边柱!)
+  for (const sz of [-0.38, 0.38]) {
+    const sideWall = new THREE.Mesh(
+      new THREE.BoxGeometry(0.44, 0.72, 0.038),
+      tvWoodMat
     );
-    drw.position.set(0.215, dy, 0);
+    sideWall.position.set(0, 0.455, sz);
+    sideWall.castShadow = true;
+    sideWall.receiveShadow = true;
+    chestGroup.add(sideWall);
+
+    const sideInset = new THREE.Mesh(
+      new THREE.BoxGeometry(0.31, 0.56, 0.010),
+      tvWoodDeepMat
+    );
+    sideInset.position.set(0, 0.455, sz + (sz < 0 ? -0.016 : 0.016));
+    chestGroup.add(sideInset);
+  }
+
+  // Flush horizontal divider rails + 3 Flat-Recessed Drawers with Vintage Shell Cup Pulls ('cup')
+  for (const ry of [0.336, 0.574]) {
+    const divRail = new THREE.Mesh(
+      new THREE.BoxGeometry(0.018, 0.020, 0.72),
+      tvWoodMat
+    );
+    divRail.position.set(0.213, ry, 0);
+    chestGroup.add(divRail);
+  }
+  for (const dy of [0.218, 0.455, 0.692]) {
+    const drw = buildTvStyleRaisedDrawer(0.69, 0.208, true, 'cup');
+    drw.position.set(0.214, dy, 0);
     chestGroup.add(drw);
   }
   // White & oak 2-drawer stacked desktop organizer box on top of the chest (Screenshot 1: two stacked drawers!)
@@ -1802,7 +3222,7 @@ export function buildLivingRoom(
   chestGroup.add(orgFrame);
   const orgPic = new THREE.Mesh(
     new THREE.PlaneGeometry(0.125, 0.165),
-    mat({ map: textures.sofaArtworks[2], color: 0xe6dcd4, roughness: 0.92, celStrength: 0.44 })
+    mat({ map: textures.sofaArtworks[2], color: 0xf7f2ed, roughness: 0.90, celStrength: 0.34 })
   );
   orgPic.rotation.y = Math.PI / 2;
   orgPic.position.set(-0.005, 1.17, 0.06);
@@ -1831,7 +3251,7 @@ export function buildLivingRoom(
   chestWallShelf.add(cwsArtFrame);
   const cwsArtCanvas = new THREE.Mesh(
     new THREE.PlaneGeometry(0.15, 0.20),
-    mat({ map: textures.sofaArtworks[1], color: 0xe6dcd4, roughness: 0.92, celStrength: 0.44 })
+    mat({ map: textures.sofaArtworks[1], color: 0xf7f2ed, roughness: 0.90, celStrength: 0.34 })
   );
   cwsArtCanvas.rotation.y = Math.PI / 2;
   cwsArtCanvas.position.set(0.006, 0.136, 0.18);
@@ -1947,99 +3367,227 @@ export function buildLivingRoom(
   addBoxCollider('col_liv_chest', -0.92, 0.48, -2.52, 0.46, 0.96, 0.84);
 
   // =========================================================================
-  // 5B. FOUR-DRAWER LONG WOODEN DRESSER + HANDCRAFTED CHRISTMAS WREATH
-  //     Placed on the West wall directly to the RIGHT of the Bedroom Door
-  //     (door_bedroom Z = -4.15..-3.05; facing door from Living Room, right is -Z!)
+  // 5B. CLASSIC AMERICAN SIDEBOARD CABINET (硬朗齐平直框 + 复古弧形吊环/圆环/八角铜钮 + 透明冷灰玻璃展示内腔!)
   // =========================================================================
   const bedSideDresser = new THREE.Group();
   bedSideDresser.position.set(-0.84, 0, -5.55);
 
-  const bsdCarcass = new THREE.Mesh(
-    createBeveledBox(0.46, 0.78, 1.54, 0.022, 3),
-    oakMat
+  // Single clean solid-wood back panel + left/right closed compartments + HOLLOW CENTER DISPLAY CAVITY!
+  const bsdBack = new THREE.Mesh(
+    new THREE.BoxGeometry(0.020, 0.74, 1.54),
+    tvWoodDeepMat
   );
-  bsdCarcass.position.y = 0.49;
-  bsdCarcass.castShadow = true;
-  bsdCarcass.receiveShadow = true;
-  outlines.addOutline(bsdCarcass, 1.015);
-  bedSideDresser.add(bsdCarcass);
+  bsdBack.position.set(-0.215, 0.48, 0);
+  bsdBack.receiveShadow = true;
+  bedSideDresser.add(bsdBack);
 
-  // Chunky bullnose rounded honey-oak top slab
-  const bsdTop = new THREE.Mesh(
-    createBeveledSlab(0.51, 0.042, 1.62, 0.048, 0.014),
-    oakMat
+  // Top drawer deck (seals drawer bay above the open glass display cavity)
+  const bsdTopDeck = new THREE.Mesh(
+    new THREE.BoxGeometry(0.44, 0.16, 1.50),
+    tvWoodDeepMat
   );
-  bsdTop.position.y = 0.895;
+  bsdTopDeck.position.set(0.0, 0.768, 0);
+  bedSideDresser.add(bsdTopDeck);
+
+  // Left & Right closed cabinet interior dividers + Center Display Interior Shelf & Tableware
+  for (const divZ of [-0.365, 0.365]) {
+    const innerDiv = new THREE.Mesh(new THREE.BoxGeometry(0.43, 0.55, 0.022), tvWoodMat);
+    innerDiv.position.set(0, 0.405, divZ);
+    bedSideDresser.add(innerDiv);
+  }
+  const bsdFloor = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.020, 1.50), tvWoodDeepMat);
+  bsdFloor.position.set(0, 0.142, 0);
+  bedSideDresser.add(bsdFloor);
+
+  // Interior warm-wood display shelf visible through the transparent cool-gray glass doors!
+  const bsdDisplayShelf = new THREE.Mesh(new THREE.BoxGeometry(0.39, 0.018, 0.71), tvWoodMat);
+  bsdDisplayShelf.position.set(-0.01, 0.405, 0);
+  bsdDisplayShelf.receiveShadow = true;
+  bedSideDresser.add(bsdDisplayShelf);
+
+  // Stacked cream-ceramic bowls & plates displayed neatly inside the glass cabinet (like reference photos!)
+  const dispCeramicMat = mat({ color: 0xf4efe6, roughness: 0.36, metalness: 0.02 });
+  const dispSageBowlMat = mat({ color: 0x8ea886, roughness: 0.38, metalness: 0.02 });
+  for (let p = 0; p < 4; p++) {
+    const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.088, 0.068, 0.016, 16), dispCeramicMat);
+    plate.position.set(0.02, 0.162 + p * 0.018, 0.16);
+    bedSideDresser.add(plate);
+  }
+  const lowerBowl = new THREE.Mesh(new THREE.CylinderGeometry(0.072, 0.044, 0.068, 16), dispSageBowlMat);
+  lowerBowl.position.set(0.01, 0.188, -0.15);
+  bedSideDresser.add(lowerBowl);
+  for (let b = 0; b < 3; b++) {
+    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.060, 0.036, 0.042, 16), dispCeramicMat);
+    bowl.position.set(0.01, 0.434 + b * 0.028, -0.16);
+    bedSideDresser.add(bowl);
+  }
+  const carafe = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.046, 0.14, 14), dispCeramicMat);
+  carafe.position.set(0.0, 0.484, 0.14);
+  bedSideDresser.add(carafe);
+
+  // Crisp Sharp-Edged 3-Step American Crown Top (无圆角/无厚描边!)
+  const bsdTop = new THREE.Mesh(
+    new THREE.BoxGeometry(0.52, 0.030, 1.64),
+    tvWoodMat
+  );
+  bsdTop.position.set(0.012, 0.895, 0);
   bsdTop.castShadow = true;
   bsdTop.receiveShadow = true;
-  outlines.addOutline(bsdTop, 1.015);
   bedSideDresser.add(bsdTop);
 
-  // Subtle recessed shadow molding under top slab
-  const bsdReveal = new THREE.Mesh(
-    createBeveledBox(0.47, 0.014, 1.56, 0.004, 2),
-    darkOakMat
+  const bsdUnderCrown = new THREE.Mesh(
+    new THREE.BoxGeometry(0.49, 0.018, 1.60),
+    tvWoodDeepMat
   );
-  bsdReveal.position.y = 0.870;
-  bedSideDresser.add(bsdReveal);
+  bsdUnderCrown.position.set(0.008, 0.871, 0);
+  bedSideDresser.add(bsdUnderCrown);
 
-  // 4 Full-Width Stacked Molded Drawers (四层长抽屉) with dual brass knobs
-  const bsdDrawerYs = [0.215, 0.398, 0.581, 0.764];
-  for (const dy of bsdDrawerYs) {
-    const drwSlab = new THREE.Mesh(
-      createBeveledBox(0.026, 0.160, 1.44, 0.008, 2),
-      drawerWhiteMat
-    );
-    drwSlab.position.set(0.232, dy, 0);
-    drwSlab.castShadow = true;
-    drwSlab.receiveShadow = true;
-    bedSideDresser.add(drwSlab);
+  const bsdFrieze = new THREE.Mesh(
+    new THREE.BoxGeometry(0.47, 0.014, 1.57),
+    tvWoodMat
+  );
+  bsdFrieze.position.set(0.005, 0.855, 0);
+  bedSideDresser.add(bsdFrieze);
 
-    // Molded raised honey-oak trim frame around each long drawer front
-    const trimTopBotGeo = createBeveledBox(0.012, 0.016, 1.38, 0.004, 2);
-    for (const ty of [-0.066, 0.066]) {
-      const mBar = new THREE.Mesh(trimTopBotGeo, drawerMoldingMat);
-      mBar.position.set(0.244, dy + ty, 0);
-      bedSideDresser.add(mBar);
-    }
-    const trimSideGeo = createBeveledBox(0.012, 0.146, 0.018, 0.004, 2);
-    for (const tz of [-0.682, 0.682]) {
-      const sBar = new THREE.Mesh(trimSideGeo, drawerMoldingMat);
-      sBar.position.set(0.244, dy, tz);
-      bedSideDresser.add(sBar);
-    }
-    // Dual rounded brass drawer knobs
-    for (const kz of [-0.36, 0.36]) {
-      const knobStem = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.007, 0.009, 0.018, 10),
-        handleBrassMat
-      );
-      knobStem.rotation.z = Math.PI / 2;
-      knobStem.position.set(0.252, dy, kz);
-      bedSideDresser.add(knobStem);
+  // Crisp Stepped American Base Plinth + Tapered Feet
+  const bsdBot = new THREE.Mesh(
+    new THREE.BoxGeometry(0.51, 0.026, 1.62),
+    tvWoodMat
+  );
+  bsdBot.position.set(0.008, 0.118, 0);
+  bsdBot.castShadow = true;
+  bsdBot.receiveShadow = true;
+  bedSideDresser.add(bsdBot);
 
-      const knobBall = new THREE.Mesh(
-        new THREE.SphereGeometry(0.016, 12, 10),
-        handleBrassMat
-      );
-      knobBall.position.set(0.264, dy, kz);
-      knobBall.castShadow = true;
-      bedSideDresser.add(knobBall);
+  const bsdPlinthSkirt = new THREE.Mesh(
+    new THREE.BoxGeometry(0.48, 0.020, 1.58),
+    tvWoodDeepMat
+  );
+  bsdPlinthSkirt.position.set(0.005, 0.095, 0);
+  bedSideDresser.add(bsdPlinthSkirt);
+
+  const bsdBunGeo = createTurnedLegGeometry(0.030, 0.016, 0.090);
+  for (const fx of [-0.19, 0.21]) {
+    for (const fz of [-0.73, 0.73]) {
+      const bFoot = new THREE.Mesh(bsdBunGeo, tvWoodDeepMat);
+      bFoot.position.set(fx, 0.045, fz);
+      bFoot.castShadow = true;
+      bedSideDresser.add(bFoot);
     }
   }
 
-  // 4 Sturdy Turned Tapered Oak Legs under the 4-Drawer Long Dresser
-  const bsdLegGeo = createTurnedLegGeometry(0.025, 0.016, 0.115);
-  for (const [lx, lz] of [
-    [-0.17, -0.68],
-    [0.17, -0.68],
-    [-0.17, 0.68],
-    [0.17, 0.68],
+  // Clean Flush Side Panels with Crisp Recessed Side Frame
+  for (const sz of [-0.76, 0.76]) {
+    const sideWall = new THREE.Mesh(
+      new THREE.BoxGeometry(0.46, 0.73, 0.036),
+      tvWoodMat
+    );
+    sideWall.position.set(0, 0.485, sz);
+    sideWall.castShadow = true;
+    sideWall.receiveShadow = true;
+    bedSideDresser.add(sideWall);
+
+    const sideInset = new THREE.Mesh(
+      new THREE.BoxGeometry(0.34, 0.56, 0.010),
+      tvWoodDeepMat
+    );
+    sideInset.position.set(0, 0.485, sz + (sz < 0 ? -0.015 : 0.015));
+    bedSideDresser.add(sideInset);
+  }
+
+  // Flush Horizontal Divider Rail & Vertical Stiles (齐平直框!)
+  const midRail = new THREE.Mesh(
+    new THREE.BoxGeometry(0.018, 0.020, 1.49),
+    tvWoodMat
+  );
+  midRail.position.set(0.228, 0.682, 0);
+  bedSideDresser.add(midRail);
+
+  for (const vz of [-0.74, -0.37, 0.37, 0.74]) {
+    const vStile = new THREE.Mesh(
+      new THREE.BoxGeometry(0.018, 0.72, 0.032),
+      tvWoodMat
+    );
+    vStile.position.set(0.228, 0.485, vz);
+    bedSideDresser.add(vStile);
+  }
+
+  // TOP ROW: 3 Flush Recessed-Panel Drawers with Vintage Curved Bail Drop-Pulls ('bail', matching photo 2!)
+  const leftTopDrw = buildTvStyleRaisedDrawer(0.325, 0.145, false, 'bail');
+  leftTopDrw.position.set(0.230, 0.768, -0.555);
+  bedSideDresser.add(leftTopDrw);
+
+  const centerTopDrw = buildTvStyleRaisedDrawer(0.695, 0.145, true, 'bail');
+  centerTopDrw.position.set(0.230, 0.768, 0);
+  bedSideDresser.add(centerTopDrw);
+
+  const rightTopDrw = buildTvStyleRaisedDrawer(0.325, 0.145, false, 'bail');
+  rightTopDrw.position.set(0.230, 0.768, 0.555);
+  bedSideDresser.add(rightTopDrw);
+
+  // LOWER ROW: Left & Right Solid Flush-Framed Doors with Vintage Drop-Ring Pulls ('ring')
+  for (const [dz, knobSide] of [
+    [-0.555, 1],
+    [0.555, -1],
   ] as const) {
-    const leg = new THREE.Mesh(bsdLegGeo, darkOakMat);
-    leg.position.set(lx, 0.056, lz);
-    leg.castShadow = true;
-    bedSideDresser.add(leg);
+    const sideDoor = buildTvStyleRaisedDrawer(0.325, 0.525, false, 'ring');
+    sideDoor.position.set(0.230, 0.402, dz);
+    // Position drop-ring pull on the inner opening stile edge
+    const ringHandle = sideDoor.children[sideDoor.children.length - 1];
+    ringHandle.position.set(0.008, 0.015, knobSide * 0.125);
+    bedSideDresser.add(sideDoor);
+  }
+
+  // Center Twin Display Doors with TRANSPARENT COOL-GRAY GLASS (透明冷灰色玻璃) + Octagonal Bronze Knobs ('octKnob')!
+  const cabGlassMat = new THREE.MeshPhysicalMaterial({
+    color: 0x708090,
+    roughness: 0.06,
+    metalness: 0.14,
+    transparent: true,
+    opacity: 0.34,
+    depthWrite: false,
+  });
+  for (const [dz, knobSide] of [
+    [-0.175, 1],
+    [0.175, -1],
+  ] as const) {
+    const gDoor = new THREE.Group();
+    gDoor.position.set(0.230, 0.402, dz);
+    const dw = 0.335;
+    const dh = 0.525;
+    const fW = 0.038;
+    // Flush crisp wooden frame rails & stiles
+    for (const ry of [-(dh - fW) * 0.5, (dh - fW) * 0.5]) {
+      const r = new THREE.Mesh(new THREE.BoxGeometry(0.018, fW, dw), tvWoodMat);
+      r.position.set(0.001, ry, 0);
+      r.castShadow = true;
+      gDoor.add(r);
+    }
+    for (const sz of [-(dw - fW) * 0.5, (dw - fW) * 0.5]) {
+      const st = new THREE.Mesh(new THREE.BoxGeometry(0.018, dh, fW), tvWoodMat);
+      st.position.set(0.001, 0, sz);
+      st.castShadow = true;
+      gDoor.add(st);
+    }
+    // Transparent cool-gray glass pane + crisp 2×3 wooden muntin grid
+    const pane = new THREE.Mesh(new THREE.BoxGeometry(0.005, dh - fW * 1.8, dw - fW * 1.8), cabGlassMat);
+    pane.position.set(0.000, 0, 0);
+    gDoor.add(pane);
+
+    const vBar = new THREE.Mesh(new THREE.BoxGeometry(0.010, dh - fW * 1.8, 0.011), tvWoodMat);
+    vBar.position.set(0.003, 0, 0);
+    gDoor.add(vBar);
+    for (const hy of [-0.075, 0.075]) {
+      const hBar = new THREE.Mesh(new THREE.BoxGeometry(0.010, 0.011, dw - fW * 1.8), tvWoodMat);
+      hBar.position.set(0.003, hy, 0);
+      gDoor.add(hBar);
+    }
+    // Faceted antique-bronze octagonal knob on inner meeting stile
+    const gKnob = createAmericanHandle('octKnob', 1);
+    gKnob.position.set(0.009, 0.010, knobSide * 0.145);
+    gDoor.add(gKnob);
+
+    bedSideDresser.add(gDoor);
   }
 
   // Cheerful color-accent tabletop decor on the 4-drawer long dresser (ceramic tray, scented candle & pastel figurine)
@@ -2096,34 +3644,18 @@ export function buildLivingRoom(
   addBoxCollider('col_liv_bed_dresser', -0.84, 0.46, -5.55, 0.54, 0.94, 1.64);
 
   // =========================================================================
-  // 5C. HANDCRAFTED CHRISTMAS WREATH ON WALL ABOVE 4-DRAWER LONG DRESSER
-  //     Composed of: Noble Fir (诺贝松), Pinecones (松果), Cinnamon Sticks (桂皮),
-  //     Holly Leaves & Berries (冬青), Dried Lemon Slices (柠檬), and a plump
-  //     Center Cotton-Stuffed Red Velvet Fabric Bow (棉花填充布艺红丝绒蝴蝶结)!
+  // 5C. HANDCRAFTED WOVEN PINE-BOUGH CHRISTMAS WREATH ABOVE DRESSER
+  //     - Hidden thin woody grapevine core + 66 true 3-wing 3D anime conifer boughs (ZERO green donut!)
+  //     - Fibonacci open-scale woody pinecones (26 individual scales each, ZERO bun cones!)
+  //     - Structured 4-loop folded crimson velvet ribbon bow + V-notched swallowtail tails
+  //       with custom woven velvet nap & selvedge stitch texture!
   // =========================================================================
   const wreathGroup = new THREE.Group();
-  wreathGroup.position.set(-1.105, 1.80, -5.55); // Flush on West wall above the 4-drawer dresser, facing +X
+  wreathGroup.position.set(-1.105, 1.80, -5.55); // Flush on West wall above dresser, facing +X
 
-  const nobleFirDarkMat = mat({
-    map: textures.plantLeaf,
-    bumpMap: textures.plantLeafBump,
-    bumpScale: 0.018,
-    color: 0x3b6e56,
-    roughness: 0.74,
-    metalness: 0.0,
-    side: THREE.DoubleSide,
-  });
-  const nobleFirSilverMat = mat({
-    map: textures.plantLeaf,
-    bumpMap: textures.plantLeafBump,
-    bumpScale: 0.016,
-    color: 0x568e74,
-    roughness: 0.70,
-    metalness: 0.0,
-    side: THREE.DoubleSide,
-  });
-  const pineconeMat = mat({ color: 0x6b4228, roughness: 0.86, metalness: 0.0 });
-  const pineconeTipMat = mat({ color: 0x8f6242, roughness: 0.84, metalness: 0.0 });
+  const wreathTwigBarkMat = mat({ color: 0x462b1b, roughness: 0.90, metalness: 0.0 });
+  const pineconeScaleBaseMat = mat({ color: 0x5c361e, roughness: 0.84, metalness: 0.0, celStrength: 0.52 });
+  const pineconeScaleTipMat = mat({ color: 0x9b6b45, roughness: 0.78, metalness: 0.0, celStrength: 0.48 });
   const cinnamonMat = mat({ color: 0x8c4d2b, roughness: 0.82, metalness: 0.0 });
   const twineMat = mat({ color: 0xe4d2b0, roughness: 0.92, metalness: 0.0 });
   const wreathHollyLeafMat = mat({
@@ -2143,104 +3675,410 @@ export function buildLivingRoom(
   const lemonPeelMat = mat({ color: 0xe6b42e, roughness: 0.62, metalness: 0.0 });
   const lemonPithMat = mat({ color: 0xfaf0d2, roughness: 0.78, metalness: 0.0 });
   const lemonPulpMat = mat({ color: 0xf4c842, roughness: 0.42, metalness: 0.02 });
-  // Plush cotton-stuffed red velvet bow material (soft woven fabric nap, rich crimson)
+
+  // Custom Woven Crimson Velvet Ribbon Texture + Micro-Twill Nap Bump (真实丝绒布料织纹与锁边压线)
+  const velvetRibbonTextures = (() => {
+    const W = 256;
+    const H = 512;
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const vctx = c.getContext('2d')!;
+    const bc = document.createElement('canvas');
+    bc.width = W;
+    bc.height = H;
+    const bctx = bc.getContext('2d')!;
+
+    // Rich directional silk-velvet pile sheen across ribbon length & width
+    const sheen = vctx.createLinearGradient(0, 0, 0, H);
+    sheen.addColorStop(0.0, '#780d1b');
+    sheen.addColorStop(0.26, '#be1d32');
+    sheen.addColorStop(0.50, '#dc2b42');
+    sheen.addColorStop(0.76, '#a91629');
+    sheen.addColorStop(1.0, '#6e0b18');
+    vctx.fillStyle = sheen;
+    vctx.fillRect(0, 0, W, H);
+
+    bctx.fillStyle = '#808080';
+    bctx.fillRect(0, 0, W, H);
+
+    // Fine woven velvet warp/weft fabric threads & short brushed pile nap
+    for (let y = 0; y < H; y += 2) {
+      vctx.fillStyle = y % 4 === 0 ? 'rgba(255, 195, 205, 0.075)' : 'rgba(42, 4, 10, 0.085)';
+      vctx.fillRect(0, y, W, 1);
+      bctx.fillStyle = y % 4 === 0 ? 'rgba(205, 205, 205, 0.24)' : 'rgba(55, 55, 55, 0.24)';
+      bctx.fillRect(0, y, W, 1);
+    }
+    for (let x = 0; x < W; x += 3) {
+      vctx.fillStyle = x % 6 === 0 ? 'rgba(255, 210, 218, 0.055)' : 'rgba(48, 5, 12, 0.065)';
+      vctx.fillRect(x, 0, 1.5, H);
+      bctx.fillStyle = x % 6 === 0 ? 'rgba(218, 218, 218, 0.22)' : 'rgba(52, 52, 52, 0.22)';
+      bctx.fillRect(x, 0, 1.5, H);
+    }
+
+    // Crisp tailored satin-velvet selvedge edge welting + fine gold-crimson running stitch along both ribbon borders!
+    for (const edgeX of [10, W - 10]) {
+      vctx.fillStyle = 'rgba(248, 178, 186, 0.28)';
+      vctx.fillRect(edgeX - 4, 0, 8, H);
+      bctx.fillStyle = 'rgba(232, 232, 232, 0.55)';
+      bctx.fillRect(edgeX - 3, 0, 6, H);
+
+      vctx.save();
+      vctx.strokeStyle = 'rgba(246, 206, 146, 0.62)';
+      vctx.lineWidth = 1.8;
+      vctx.setLineDash([6, 4]);
+      vctx.beginPath();
+      vctx.moveTo(edgeX, 0);
+      vctx.lineTo(edgeX, H);
+      vctx.stroke();
+      vctx.restore();
+    }
+
+    const map = new THREE.CanvasTexture(c);
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.wrapS = THREE.ClampToEdgeWrapping;
+    map.wrapT = THREE.RepeatWrapping;
+    map.anisotropy = 4;
+
+    const bumpMap = new THREE.CanvasTexture(bc);
+    bumpMap.wrapS = THREE.ClampToEdgeWrapping;
+    bumpMap.wrapT = THREE.RepeatWrapping;
+    bumpMap.anisotropy = 4;
+
+    return { map, bumpMap };
+  })();
+
   const redVelvetBowMat = mat({
-    map: textures.plushFabric,
-    bumpMap: textures.plushBump,
-    bumpScale: 0.015,
-    color: 0xb81a2c,
-    roughness: 0.88,
-    metalness: 0.0,
-    rimScale: 0.85,
+    map: velvetRibbonTextures.map,
+    bumpMap: velvetRibbonTextures.bumpMap,
+    bumpScale: 0.014,
+    color: 0xffffff,
+    roughness: 0.74,
+    metalness: 0.02,
+    rimScale: 1.32,
+    celStrength: 0.46,
+    side: THREE.DoubleSide,
   });
   const redVelvetDeepMat = mat({
-    map: textures.plushFabric,
-    bumpMap: textures.plushBump,
+    map: velvetRibbonTextures.map,
+    bumpMap: velvetRibbonTextures.bumpMap,
     bumpScale: 0.014,
-    color: 0x921222,
-    roughness: 0.90,
+    color: 0xd9b8be,
+    roughness: 0.80,
     metalness: 0.0,
+    rimScale: 1.15,
+    celStrength: 0.48,
+    side: THREE.DoubleSide,
   });
 
-  // Subtle brass wall nail + hanging loop behind wreath
+  // Subtle brass wall nail behind top of wreath
   const wreathHook = new THREE.Mesh(
     new THREE.CylinderGeometry(0.006, 0.006, 0.026, 8),
     handleBrassMat
   );
   wreathHook.rotation.z = Math.PI / 2;
-  wreathHook.position.set(0.01, 0.36, 0);
+  wreathHook.position.set(0.01, 0.34, 0);
   wreathGroup.add(wreathHook);
 
-  // Structural woven pine-bough torus base ring (lies in Y-Z plane, facing +X)
-  const wreathBase = new THREE.Mesh(
-    new THREE.TorusGeometry(0.275, 0.056, 12, 28),
-    nobleFirDarkMat
+  // Slim hidden dark-brown grapevine twig ring (compact radius = 0.228m)
+  const wreathVineCore = new THREE.Mesh(
+    new THREE.TorusGeometry(0.228, 0.018, 10, 28),
+    wreathTwigBarkMat
   );
-  wreathBase.rotation.y = Math.PI / 2;
-  wreathBase.position.x = 0.042;
-  wreathBase.castShadow = true;
-  wreathBase.receiveShadow = true;
-  wreathGroup.add(wreathBase);
+  wreathVineCore.rotation.y = Math.PI / 2;
+  wreathVineCore.position.x = 0.044;
+  wreathGroup.add(wreathVineCore);
 
-  // 1) Dense layered Noble Fir needle sprigs (诺贝松枝叶) sweeping clockwise around the ring
-  const firSprigGeo = createPlushBox(0.018, 0.054, 0.145, 0.007, 0.24);
-  for (let i = 0; i < 42; i++) {
-    const ang = (i / 42) * Math.PI * 2;
-    const radJitter = 0.245 + (i % 3) * 0.032;
-    const sprig = new THREE.Mesh(
-      firSprigGeo,
-      i % 3 === 0 ? nobleFirSilverMat : nobleFirDarkMat
-    );
-    const sy = Math.sin(ang) * radJitter;
-    const sz = Math.cos(ang) * radJitter;
-    const sx = 0.058 + (i % 4) * 0.012;
-    sprig.position.set(sx, sy, sz);
-    sprig.rotation.set(ang + 0.42 + ((i % 5) - 2) * 0.12, (i % 2 === 0 ? 0.28 : -0.22), 0.18 + (i % 3) * 0.10);
-    sprig.scale.set(1.0, 0.85 + (i % 3) * 0.16, 0.85 + (i % 4) * 0.12);
-    sprig.castShadow = true;
-    wreathGroup.add(sprig);
+  // 1) Exact Christmas-Tree-Matched 11-Shoot Serrated Conifer Spray Texture + 3-Wing 3D Bough Geometry!
+  const wreathPineSprayTex = (() => {
+    const S = 512;
+    const c = document.createElement('canvas');
+    c.width = S;
+    c.height = S;
+    const pctx = c.getContext('2d')!;
+    pctx.clearRect(0, 0, S, S);
+    pctx.lineCap = 'round';
+    pctx.lineJoin = 'round';
+
+    const drawConiferShoot = (
+      x0: number,
+      y0: number,
+      x1: number,
+      y1: number,
+      halfWid: number,
+      teethCount: number,
+      brightVariant = false
+    ) => {
+      const dx = x1 - x0;
+      const dy = y1 - y0;
+      const len = Math.hypot(dx, dy);
+      const ang = Math.atan2(dy, dx);
+      pctx.save();
+      pctx.translate(x0, y0);
+      pctx.rotate(ang);
+
+      const tracePad = () => {
+        pctx.beginPath();
+        pctx.moveTo(0, -halfWid * 0.38);
+        for (let k = 0; k < teethCount; k++) {
+          const t0 = k / teethCount;
+          const tTip = (k + 0.86) / teethCount;
+          const tNotch = (k + 0.94) / teethCount;
+          const env = Math.sin(Math.min(1, t0 * 1.15 + 0.20) * Math.PI * 0.78);
+          const oy = -halfWid * (0.55 + 0.52 * env);
+          const ny = -halfWid * (0.30 + 0.32 * env);
+          pctx.quadraticCurveTo(len * (t0 + 0.42 / teethCount), oy * 0.92, len * Math.min(0.96, tTip), oy);
+          if (k < teethCount - 1) pctx.lineTo(len * tNotch, ny);
+        }
+        pctx.lineTo(len * 0.95, -halfWid * 0.28);
+        pctx.lineTo(len, 0);
+        pctx.lineTo(len * 0.95, halfWid * 0.28);
+        for (let k = teethCount - 1; k >= 0; k--) {
+          const t0 = k / teethCount;
+          const tTip = (k + 0.86) / teethCount;
+          const tNotch = (k + 0.94) / teethCount;
+          const env = Math.sin(Math.min(1, t0 * 1.15 + 0.20) * Math.PI * 0.78);
+          const oy = halfWid * (0.55 + 0.52 * env);
+          const ny = halfWid * (0.30 + 0.32 * env);
+          if (k < teethCount - 1) pctx.lineTo(len * tNotch, ny);
+          pctx.quadraticCurveTo(len * (t0 + 0.42 / teethCount), oy * 0.92, len * Math.min(0.96, tTip), oy);
+        }
+        pctx.lineTo(0, halfWid * 0.38);
+        pctx.closePath();
+      };
+
+      tracePad();
+      pctx.fillStyle = brightVariant ? '#349154' : '#297e47';
+      pctx.fill();
+      pctx.strokeStyle = '#154428';
+      pctx.lineWidth = 4.4;
+      pctx.stroke();
+
+      pctx.save();
+      tracePad();
+      pctx.clip();
+      const shGrad = pctx.createLinearGradient(0, -halfWid, 0, halfWid);
+      shGrad.addColorStop(0.0, brightVariant ? '#5cb86c' : '#48a65c');
+      shGrad.addColorStop(0.48, brightVariant ? '#359255' : '#2b8049');
+      shGrad.addColorStop(1.0, '#1d5c35');
+      pctx.fillStyle = shGrad;
+      pctx.fillRect(0, -halfWid * 1.3, len * 1.05, halfWid * 2.6);
+
+      const tipGrad = pctx.createLinearGradient(len * 0.45, 0, len, 0);
+      tipGrad.addColorStop(0.0, 'rgba(130, 218, 132, 0)');
+      tipGrad.addColorStop(1.0, brightVariant ? 'rgba(142, 226, 136, 0.82)' : 'rgba(116, 208, 122, 0.68)');
+      pctx.fillStyle = tipGrad;
+      pctx.fillRect(len * 0.45, -halfWid * 1.2, len * 0.60, halfWid * 2.4);
+      pctx.restore();
+      pctx.restore();
+    };
+
+    const shoots: [number, number, number, number, number, number, boolean][] = [
+      [256, 470, 62, 336, 26, 5, false],
+      [256, 464, 450, 330, 26, 5, true],
+      [256, 392, 58, 244, 25, 5, true],
+      [256, 386, 454, 238, 25, 5, false],
+      [256, 310, 76, 156, 24, 5, false],
+      [256, 304, 436, 150, 24, 5, true],
+      [256, 228, 108, 86, 22, 4, true],
+      [256, 222, 404, 80, 22, 4, false],
+      [256, 154, 154, 38, 20, 4, false],
+      [256, 150, 358, 36, 20, 4, true],
+    ];
+    for (const [x0, y0, x1, y1, hw, tc, bright] of shoots) {
+      drawConiferShoot(x0, y0, x1, y1, hw, tc, bright);
+    }
+    drawConiferShoot(256, 504, 256, 14, 30, 9, true);
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    return tex;
+  })();
+
+  // Deeper, richer dark-evergreen pine tint matching the darkened Christmas tree
+  const wreathPineMat = mat({
+    map: wreathPineSprayTex,
+    color: 0xbad0bc,
+    roughness: 0.70,
+    metalness: 0.0,
+    alphaTest: 0.40,
+    side: THREE.DoubleSide,
+    rimScale: 1.28,
+    celStrength: 0.56,
+  });
+
+  // True 3-Wing 3D S-Sweep Conifer Bough Geometry (identical structure to Christmas tree's pineFrondGeo!)
+  const wreathBoughGeo = (() => {
+    const bLen = 0.255;
+    const bWid = 0.195;
+    const wings: THREE.BufferGeometry[] = [];
+    for (const tilt of [0, 0.46, -0.46]) {
+      const wScale = tilt === 0 ? 1.0 : 0.66;
+      const g = new THREE.PlaneGeometry(bWid * wScale, bLen, 5, 8);
+      g.rotateX(Math.PI / 2);
+      g.translate(0, 0, bLen * 0.5);
+
+      const pos = g.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const px = pos.getX(i);
+        const pz = pos.getZ(i);
+        const t = THREE.MathUtils.clamp(pz / bLen, 0, 1);
+        const sideFrac = Math.abs(px) / (bWid * wScale * 0.5);
+        const archY = 0.016 * Math.sin(t * Math.PI) - 0.022 * Math.pow(t, 1.5);
+        const roofSkirtY = -Math.pow(sideFrac, 1.15) * 0.024 * (0.35 + 0.65 * t);
+        const rx = px * Math.cos(tilt) - roofSkirtY * Math.sin(tilt);
+        const ry = px * Math.sin(tilt) + roofSkirtY * Math.cos(tilt) + archY;
+        pos.setXYZ(i, rx, ry, pz);
+      }
+      g.computeVertexNormals();
+      wings.push(g);
+    }
+    return BufferGeometryUtils.mergeGeometries(wings, false)!;
+  })();
+
+  // Arrange 66 3-wing 3D pine boughs around the compact 0.228m vine ring (外圈缩小一点，更紧凑精致)
+  const wreathBoughSpecs: {
+    r: number;
+    ang: number;
+    splayRad: number;
+    liftX: number;
+    xBase: number;
+    sc: number;
+  }[] = [];
+  // Outer feathery ring (24 boughs)
+  for (let i = 0; i < 24; i++) {
+    wreathBoughSpecs.push({
+      r: 0.232 + (i % 2) * 0.010,
+      ang: (i / 24) * Math.PI * 2,
+      splayRad: 0.40 + (i % 3) * 0.06,
+      liftX: 0.16,
+      xBase: 0.046,
+      sc: 0.88 + (i % 3) * 0.05,
+    });
+  }
+  // Thick main front crown ring (24 boughs)
+  for (let i = 0; i < 24; i++) {
+    wreathBoughSpecs.push({
+      r: 0.214 + (i % 2) * 0.008,
+      ang: ((i + 0.5) / 24) * Math.PI * 2,
+      splayRad: 0.06 + ((i % 3) - 1) * 0.07,
+      liftX: 0.34 + (i % 2) * 0.08,
+      xBase: 0.064,
+      sc: 0.82 + (i % 3) * 0.04,
+    });
+  }
+  // Inner rim ring (18 boughs)
+  for (let i = 0; i < 18; i++) {
+    wreathBoughSpecs.push({
+      r: 0.192,
+      ang: ((i + 0.25) / 18) * Math.PI * 2,
+      splayRad: -0.32,
+      liftX: 0.24,
+      xBase: 0.056,
+      sc: 0.74 + (i % 2) * 0.05,
+    });
   }
 
-  // 2) Sculpted Multi-Tiered Pinecones (松果) — 6 clustered pinecones around the wreath
-  const buildPinecone = (scale = 1.0) => {
+  const wreathBoughsInst = new THREE.InstancedMesh(
+    wreathBoughGeo,
+    wreathPineMat,
+    wreathBoughSpecs.length
+  );
+  wreathBoughsInst.castShadow = false;
+  wreathBoughsInst.receiveShadow = true;
+  {
+    const bFwd = new THREE.Vector3();
+    const bUp = new THREE.Vector3();
+    const bRight = new THREE.Vector3();
+    const bBasis = new THREE.Matrix4();
+    for (let i = 0; i < wreathBoughSpecs.length; i++) {
+      const sp = wreathBoughSpecs[i];
+      const radY = Math.sin(sp.ang);
+      const radZ = Math.cos(sp.ang);
+      // Clockwise tangent in Y-Z plane (looking from +X toward wall)
+      const tanY = Math.cos(sp.ang);
+      const tanZ = -Math.sin(sp.ang);
+
+      // +Z of bough sweeps along clockwise tangent + radial splay + gentle +X forward loft
+      bFwd
+        .set(
+          sp.liftX,
+          tanY + radY * sp.splayRad,
+          tanZ + radZ * sp.splayRad
+        )
+        .normalize();
+      // +Y of bough (upper pine needle face) faces outward (+X) into the living room!
+      bUp.set(1, radY * 0.22, radZ * 0.22).normalize();
+      bRight.crossVectors(bUp, bFwd).normalize();
+      bUp.crossVectors(bFwd, bRight).normalize();
+
+      bBasis.makeBasis(bRight, bUp, bFwd);
+      _instQuat.setFromRotationMatrix(bBasis);
+      _instPos.set(sp.xBase, radY * sp.r, radZ * sp.r);
+      _instScale.set(sp.sc, sp.sc, sp.sc);
+      _instMat.compose(_instPos, _instQuat, _instScale);
+      wreathBoughsInst.setMatrixAt(i, _instMat);
+    }
+    wreathBoughsInst.instanceMatrix.needsUpdate = true;
+    wreathBoughsInst.computeBoundingSphere();
+  }
+  wreathGroup.add(wreathBoughsInst);
+
+  // 2) Fibonacci Open-Scale Woody Pinecones (26 individual sculpted woody bract scales per pinecone!)
+  const pineconeScaleGeo = (() => {
+    const g = new THREE.ConeGeometry(0.0095, 0.024, 4);
+    g.scale(1.15, 1.0, 0.36); // Flattened diamond woody scale blade
+    g.translate(0, 0.011, 0);
+    return g;
+  })();
+  const buildOpenScalePinecone = (scale = 1.0) => {
     const pc = new THREE.Group();
-    const tiers = [
-      { y: 0.0, r: 0.026, h: 0.018 },
-      { y: 0.016, r: 0.032, h: 0.020 },
-      { y: 0.033, r: 0.028, h: 0.019 },
-      { y: 0.048, r: 0.021, h: 0.016 },
-      { y: 0.060, r: 0.012, h: 0.013 },
-    ];
-    for (let t = 0; t < tiers.length; t++) {
-      const tr = tiers[t];
-      const coneTier = new THREE.Mesh(
-        new THREE.ConeGeometry(tr.r, tr.h, 8),
-        t % 2 === 0 ? pineconeMat : pineconeTipMat
+    const core = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.006, 0.011, 0.056, 8),
+      wreathTwigBarkMat
+    );
+    core.position.y = 0.028;
+    pc.add(core);
+
+    const numScales = 26;
+    const goldenAng = 2.39996;
+    for (let k = 0; k < numScales; k++) {
+      const t = k / (numScales - 1); // 0 bottom -> 1 apex
+      const y = 0.006 + t * 0.052;
+      const env = Math.sin(Math.pow(t, 0.78) * Math.PI * 0.92);
+      const yaw = k * goldenAng;
+      const flare = THREE.MathUtils.lerp(1.12, 0.42, t); // Wide open scales below, tighter near apex
+      const scMesh = new THREE.Mesh(
+        pineconeScaleGeo,
+        k % 2 === 0 ? pineconeScaleTipMat : pineconeScaleBaseMat
       );
-      coneTier.rotation.x = Math.PI;
-      coneTier.rotation.y = t * 0.42;
-      coneTier.position.y = tr.y;
-      coneTier.castShadow = true;
-      pc.add(coneTier);
+      scMesh.position.set(Math.cos(yaw) * 0.006 * env, y, Math.sin(yaw) * 0.006 * env);
+      scMesh.rotation.order = 'YXZ';
+      scMesh.rotation.y = -yaw + Math.PI * 0.5;
+      scMesh.rotation.x = flare;
+      const sFactor = 0.65 + 0.55 * env;
+      scMesh.scale.set(sFactor, sFactor, sFactor);
+      pc.add(scMesh);
     }
     pc.scale.setScalar(scale);
     return pc;
   };
+  // Organic NON-uniform clustered placement for Pinecones (错落聚簇分布)
   for (const [pAng, pRad, pScale] of [
-    [0.52, 0.275, 1.05],
-    [1.62, 0.270, 0.95],
-    [2.68, 0.280, 1.08],
-    [3.74, 0.268, 0.96],
-    [4.82, 0.278, 1.02],
-    [5.72, 0.265, 0.92],
+    [0.62, 0.228, 1.04],
+    [0.92, 0.218, 0.88],
+    [2.38, 0.232, 1.08],
+    [4.42, 0.224, 1.02],
+    [5.85, 0.222, 0.94],
   ] as const) {
-    const pc = buildPinecone(pScale);
-    pc.position.set(0.095, Math.sin(pAng) * pRad, Math.cos(pAng) * pRad);
-    pc.rotation.set(pAng + 0.5, 0.25, -Math.PI * 0.42);
+    const pc = buildOpenScalePinecone(pScale);
+    pc.position.set(0.118, Math.sin(pAng) * pRad, Math.cos(pAng) * pRad);
+    pc.rotation.set(pAng + 0.45, 0.28, -Math.PI * 0.40);
     wreathGroup.add(pc);
   }
 
-  // 3) Bundled Rolled Cinnamon Sticks (桂皮卷束) tied with twine — 4 aromatic bundles
+  // 3) Bundled Rolled Cinnamon Sticks (桂皮卷束) — asymmetric clustered pairs
   const buildCinnamonBundle = () => {
     const cb = new THREE.Group();
     for (const [oy, oz] of [
@@ -2249,7 +4087,7 @@ export function buildLivingRoom(
       [0.0, 0.008],
     ] as const) {
       const stick = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.0095, 0.0095, 0.115, 10),
+        new THREE.CylinderGeometry(0.0085, 0.0085, 0.10, 10),
         cinnamonMat
       );
       stick.position.set(0, oy, oz);
@@ -2258,53 +4096,51 @@ export function buildLivingRoom(
       cb.add(stick);
     }
     const twineWrap = new THREE.Mesh(
-      new THREE.TorusGeometry(0.017, 0.0032, 6, 14),
+      new THREE.TorusGeometry(0.0155, 0.003, 6, 14),
       twineMat
     );
     twineWrap.rotation.y = Math.PI / 2;
     cb.add(twineWrap);
     return cb;
   };
-  for (const [cAng, cTilt] of [
-    [1.06, 0.45],
-    [2.16, -0.35],
-    [4.28, 0.52],
-    [5.28, -0.40],
+  for (const [cAng, cRad, cTilt] of [
+    [1.18, 0.226, 0.48],
+    [2.68, 0.232, -0.32],
+    [4.12, 0.224, 0.55],
   ] as const) {
     const bundle = buildCinnamonBundle();
-    bundle.position.set(0.096, Math.sin(cAng) * 0.275, Math.cos(cAng) * 0.275);
+    bundle.position.set(0.122, Math.sin(cAng) * cRad, Math.cos(cAng) * cRad);
     bundle.rotation.set(cAng + cTilt, Math.PI / 2, 0.28);
     wreathGroup.add(bundle);
   }
 
-  // 4) Dried Golden-Amber Lemon Slices (干柠檬片) — 5 translucent citrus wheels
-  const buildLemonSlice = (radius = 0.044) => {
+  // 4) Dried Golden-Amber Lemon Slices (干柠檬片) — asymmetric organic grouping
+  const buildLemonSlice = (radius = 0.040) => {
     const ls = new THREE.Group();
     const peel = new THREE.Mesh(
-      new THREE.CylinderGeometry(radius, radius, 0.008, 18),
+      new THREE.CylinderGeometry(radius, radius, 0.007, 18),
       lemonPeelMat
     );
     peel.rotation.z = Math.PI / 2;
     ls.add(peel);
 
     const pith = new THREE.Mesh(
-      new THREE.CylinderGeometry(radius * 0.87, radius * 0.87, 0.0092, 18),
+      new THREE.CylinderGeometry(radius * 0.87, radius * 0.87, 0.0082, 18),
       lemonPithMat
     );
     pith.rotation.z = Math.PI / 2;
     ls.add(pith);
 
     const pulp = new THREE.Mesh(
-      new THREE.CylinderGeometry(radius * 0.78, radius * 0.78, 0.010, 16),
+      new THREE.CylinderGeometry(radius * 0.78, radius * 0.78, 0.009, 16),
       lemonPulpMat
     );
     pulp.rotation.z = Math.PI / 2;
     ls.add(pulp);
 
-    // Pale pith spoke dividers across the citrus face
     for (let s = 0; s < 4; s++) {
       const spoke = new THREE.Mesh(
-        new THREE.BoxGeometry(0.0106, radius * 1.54, 0.0028),
+        new THREE.BoxGeometry(0.0096, radius * 1.54, 0.0026),
         lemonPithMat
       );
       spoke.rotation.x = (s / 4) * Math.PI;
@@ -2313,24 +4149,130 @@ export function buildLivingRoom(
     return ls;
   };
   for (const [lAng, lRad, lSize] of [
-    [0.14, 0.285, 0.046],
-    [1.34, 0.268, 0.042],
-    [2.98, 0.282, 0.045],
-    [4.02, 0.275, 0.042],
-    [5.50, 0.284, 0.044],
+    [0.24, 0.230, 0.042],
+    [1.92, 0.224, 0.038],
+    [2.20, 0.234, 0.036],
+    [5.22, 0.228, 0.040],
   ] as const) {
     const slice = buildLemonSlice(lSize);
-    slice.position.set(0.104, Math.sin(lAng) * lRad, Math.cos(lAng) * lRad);
-    slice.rotation.set(0, (Math.cos(lAng) * 0.22), Math.sin(lAng) * 0.22);
+    slice.position.set(0.128, Math.sin(lAng) * lRad, Math.cos(lAng) * lRad);
+    slice.rotation.set(0, Math.cos(lAng) * 0.22, Math.sin(lAng) * 0.22);
     wreathGroup.add(slice);
   }
 
-  // 5) Holly Leaves & Glossy Red Berry Clusters (冬青叶与红冬青果) — 8 festive sprigs
-  const hollyLeafGeo = createBroadLeafGeometry(0.088, 0.048, 0.22, 0.14);
-  const hollyBerryGeo = new THREE.SphereGeometry(0.0115, 10, 8);
-  for (let h = 0; h < 8; h++) {
-    const hAng = (h / 8) * Math.PI * 2 + 0.30;
-    const hPos = new THREE.Vector3(0.100, Math.sin(hAng) * 0.272, Math.cos(hAng) * 0.272);
+  // 4B) Fluffy White Natural Cotton Bolls (棉花朵) — clustered organically with pinecones & cinnamon
+  const cottonFluffMat = mat({
+    map: textures.plushFabric,
+    bumpMap: textures.plushBump,
+    bumpScale: 0.012,
+    color: 0xfbf7f0,
+    roughness: 0.94,
+    metalness: 0.0,
+    celStrength: 0.42,
+  });
+  const buildCottonBoll = (scale = 1.0) => {
+    const cb = new THREE.Group();
+    // Woody brown 4-petal cotton calyx cup at base
+    for (let p = 0; p < 4; p++) {
+      const pa = (p / 4) * Math.PI * 2 + 0.4;
+      const sepal = new THREE.Mesh(
+        new THREE.ConeGeometry(0.012, 0.026, 4),
+        wreathTwigBarkMat
+      );
+      sepal.position.set(-0.004, Math.sin(pa) * 0.014, Math.cos(pa) * 0.014);
+      sepal.rotation.set(pa, 0, -Math.PI * 0.38);
+      cb.add(sepal);
+    }
+    // 4 plump creamy-white cotton puffs nestled in the calyx
+    for (const [ox, oy, oz, rad] of [
+      [0.012, 0.011, 0.009, 0.017],
+      [0.013, -0.011, 0.010, 0.016],
+      [0.011, 0.009, -0.012, 0.016],
+      [0.014, -0.009, -0.010, 0.015],
+      [0.018, 0.0, 0.0, 0.015],
+    ] as const) {
+      const puff = new THREE.Mesh(new THREE.SphereGeometry(rad, 10, 8), cottonFluffMat);
+      puff.position.set(ox, oy, oz);
+      puff.castShadow = true;
+      cb.add(puff);
+    }
+    cb.scale.setScalar(scale);
+    return cb;
+  };
+  for (const [ctAng, ctRad, ctScale] of [
+    [1.46, 0.228, 1.05],
+    [3.52, 0.226, 1.00],
+    [3.84, 0.218, 0.88],
+    [5.54, 0.230, 0.96],
+  ] as const) {
+    const cotton = buildCottonBoll(ctScale);
+    cotton.position.set(0.122, Math.sin(ctAng) * ctRad, Math.cos(ctAng) * ctRad);
+    cotton.rotation.set(ctAng, 0.15, 0.08);
+    wreathGroup.add(cotton);
+  }
+
+  // 4C) Red-and-White Striped Christmas Candy Canes (糖拐杖) — tucked asymmetrically into the wreath!
+  const candyCaneTex = (() => {
+    const c = document.createElement('canvas');
+    c.width = 128;
+    c.height = 256;
+    const cc = c.getContext('2d')!;
+    cc.fillStyle = '#fffaf4';
+    cc.fillRect(0, 0, 128, 256);
+    cc.fillStyle = '#d62234';
+    for (let y = -128; y < 384; y += 32) {
+      cc.beginPath();
+      cc.moveTo(0, y);
+      cc.lineTo(128, y + 64);
+      cc.lineTo(128, y + 78);
+      cc.lineTo(0, y + 14);
+      cc.closePath();
+      cc.fill();
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(1, 3);
+    return tex;
+  })();
+  const candyCaneMat = mat({
+    map: candyCaneTex,
+    color: 0xffffff,
+    roughness: 0.24,
+    metalness: 0.04,
+    celStrength: 0.44,
+  });
+  const candyCaneGeo = (() => {
+    const pts = [
+      new THREE.Vector3(0, -0.075, 0),
+      new THREE.Vector3(0, -0.015, 0),
+      new THREE.Vector3(0, 0.045, 0),
+      new THREE.Vector3(0, 0.068, 0.012),
+      new THREE.Vector3(0, 0.074, 0.032),
+      new THREE.Vector3(0, 0.058, 0.046),
+      new THREE.Vector3(0, 0.034, 0.044),
+    ];
+    return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, 0.0082, 10, false);
+  })();
+  for (const [ccAng, ccRad, ccRotX, ccScale] of [
+    [0.82, 0.228, -0.45, 1.02],
+    [2.92, 0.225, 0.58, 0.96],
+    [4.74, 0.222, -0.32, 0.94],
+  ] as const) {
+    const cane = new THREE.Mesh(candyCaneGeo, candyCaneMat);
+    cane.position.set(0.132, Math.sin(ccAng) * ccRad, Math.cos(ccAng) * ccRad);
+    cane.rotation.set(ccRotX, 0.16, 0.14);
+    cane.scale.setScalar(ccScale);
+    cane.castShadow = true;
+    wreathGroup.add(cane);
+  }
+
+  // 5) Holly Leaves & Glossy Red Berry Clusters (冬青叶与红冬青果) — asymmetric accents
+  const hollyLeafGeo = createBroadLeafGeometry(0.076, 0.042, 0.22, 0.14);
+  const hollyBerryGeo = new THREE.SphereGeometry(0.0105, 10, 8);
+  for (const hAng of [0.42, 1.72, 2.52, 3.26, 4.98, 6.04]) {
+    const hPos = new THREE.Vector3(0.126, Math.sin(hAng) * 0.226, Math.cos(hAng) * 0.226);
     for (const side of [-1, 1]) {
       const hLeaf = new THREE.Mesh(hollyLeafGeo, wreathHollyLeafMat);
       hLeaf.position.copy(hPos);
@@ -2351,68 +4293,191 @@ export function buildLivingRoom(
     }
   }
 
-  // 6) CENTER COTTON-STUFFED RED VELVET FABRIC BOW (花环中间棉花填充的布艺红丝绒蝴蝶结)
-  //    Plump pillowy inflated velvet bow sitting prominently in the center of the wreath!
+  // 6) STRUCTURED 4-LOOP FOLDED CRIMSON VELVET RIBBON BOW + SWALLOWTAIL TAILS
+  //    Real thickened wide ribbon strips with pinched gather pleats, open teardrop turns,
+  //    pleated center cinch band, and crisp V-notched swallowtail ends!
+  const buildSolidRibbonStrip = (
+    segU: number,
+    segV: number,
+    thick: number,
+    evalSurface: (u: number, v: number, outPos: THREE.Vector3) => void
+  ): THREE.BufferGeometry => {
+    const topGeo = new THREE.PlaneGeometry(1, 1, segU, segV);
+    const botGeo = new THREE.PlaneGeometry(1, 1, segU, segV);
+    botGeo.rotateY(Math.PI);
+
+    const pTop = topGeo.attributes.position;
+    const uvTop = topGeo.attributes.uv;
+    const tmp = new THREE.Vector3();
+    for (let i = 0; i < pTop.count; i++) {
+      const u = THREE.MathUtils.clamp(pTop.getX(i) + 0.5, 0, 1); // 0..1 along ribbon length
+      const v = THREE.MathUtils.clamp(pTop.getY(i) + 0.5, 0, 1); // 0..1 across ribbon width
+      evalSurface(u, v - 0.5, tmp);
+      pTop.setXYZ(i, tmp.x, tmp.y, tmp.z);
+      uvTop.setXY(i, v, u * 1.8);
+    }
+    pTop.needsUpdate = true;
+    uvTop.needsUpdate = true;
+    topGeo.computeVertexNormals();
+
+    const nTop = topGeo.attributes.normal;
+    const pBot = botGeo.attributes.position;
+    const uvBot = botGeo.attributes.uv;
+    for (let iy = 0; iy <= segV; iy++) {
+      for (let ix = 0; ix <= segU; ix++) {
+        const srcIdx = iy * (segU + 1) + (segU - ix);
+        const dstIdx = iy * (segU + 1) + ix;
+        const nx = nTop.getX(srcIdx);
+        const ny = nTop.getY(srcIdx);
+        const nz = nTop.getZ(srcIdx);
+        pBot.setXYZ(
+          dstIdx,
+          pTop.getX(srcIdx) - nx * thick,
+          pTop.getY(srcIdx) - ny * thick,
+          pTop.getZ(srcIdx) - nz * thick
+        );
+        pTop.setXYZ(
+          srcIdx,
+          pTop.getX(srcIdx) + nx * (thick * 0.5),
+          pTop.getY(srcIdx) + ny * (thick * 0.5),
+          pTop.getZ(srcIdx) + nz * (thick * 0.5)
+        );
+        uvBot.setXY(dstIdx, uvTop.getX(srcIdx), uvTop.getY(srcIdx));
+      }
+    }
+    pTop.needsUpdate = true;
+    pBot.needsUpdate = true;
+    uvBot.needsUpdate = true;
+    topGeo.computeVertexNormals();
+    botGeo.computeVertexNormals();
+    return BufferGeometryUtils.mergeGeometries([topGeo, botGeo], false)!;
+  };
+
+  // Parametric folded teardrop velvet ribbon loop (pinched & pleated at waist, open curved teardrop turn!)
+  const createFoldedVelvetLoopGeo = (
+    spanZ: number,
+    loopDepthX: number,
+    ribbonW: number,
+    side: -1 | 1
+  ): THREE.BufferGeometry =>
+    buildSolidRibbonStrip(40, 14, 0.0075, (u, s, out) => {
+      const theta = u * Math.PI; // 0 (front cinch) -> pi/2 (outer teardrop fold) -> pi (back cinch)
+      const sinT = Math.sin(theta);
+      const cosT = Math.cos(theta);
+
+      // Teardrop centerline in X-Z (arches proudly forward along upper-front half, rounds open turn, tucks back)
+      const cz = side * spanZ * Math.pow(sinT, 0.76);
+      const cx =
+        0.016 +
+        loopDepthX * Math.pow(sinT, 0.62) * (0.56 + 0.44 * cosT);
+      const cyLift = 0.022 * sinT * cosT;
+
+      // Pinched tightly inside center knot (u=0,1), fanning out to full proud ribbon width along the loop!
+      const pinch = 1.0 - Math.pow(sinT, 0.52);
+      const wScale = 0.26 + 0.74 * Math.pow(sinT, 0.48);
+
+      // 3 crisp longitudinal fabric gather pleats radiating from the knot into the velvet ribbon belly!
+      const pleatWave =
+        Math.sin(s * Math.PI * 3.0) * 0.013 * (0.28 + 0.72 * pinch);
+      // Softly cupped velvet ribbon cross-section so edges curl naturally inward like heavy woven ribbon
+      const edgeCurl = -s * s * 0.022 * sinT;
+
+      const wy = s * ribbonW * wScale + cyLift;
+      const wx = cx + pleatWave * (0.5 + 0.5 * Math.abs(cosT)) + edgeCurl;
+      const wz = cz + side * edgeCurl * 0.35;
+      out.set(wx, wy, wz);
+    });
+
+  // Parametric pleated center ribbon cinch wrap (wraps snugly around the gathered waist with real folds)
+  const createVelvetKnotWrapGeo = (): THREE.BufferGeometry =>
+    buildSolidRibbonStrip(24, 12, 0.008, (u, s, out) => {
+      const ang = (u - 0.5) * Math.PI * 1.18; // Wraps from top (+Y) over front (+X) to bottom (-Y)
+      const radY = 0.056;
+      const radX = 0.052;
+      const pleat = Math.cos(s * Math.PI * 4.0) * 0.0045;
+      const wx = 0.036 + Math.cos(ang) * radX + pleat;
+      const wy = Math.sin(ang) * radY;
+      const wz = s * 0.082 * (0.88 + 0.12 * Math.cos(ang));
+      out.set(wx, wy, wz);
+    });
+
+  // Parametric S-draped wide velvet ribbon tail with crisp inverted-V swallowtail cut tip (燕尾切口)!
+  const createSwallowtailRibbonGeo = (
+    tailLen: number,
+    ribbonW: number,
+    side: -1 | 1
+  ): THREE.BufferGeometry =>
+    buildSolidRibbonStrip(32, 14, 0.0065, (u, s, out) => {
+      // At u -> 1, center (s = 0) notches upward while outer corners (|s| = 0.5) extend to crisp swallowtail points!
+      const vNotch = (1.0 - Math.abs(s) * 2.0) * 0.048 * THREE.MathUtils.smoothstep(u, 0.72, 1.0);
+      const dropY = -0.028 - u * tailLen + vNotch;
+
+      // Gentle S-curve billow draped over the lower pine wreath + soft longitudinal ribbon ripple
+      const billowX =
+        0.026 +
+        Math.sin(u * Math.PI * 1.35) * 0.034 +
+        Math.sin(s * Math.PI * 2.0) * 0.008 * (1.0 - u * 0.4) -
+        s * s * 0.014;
+      const flareW = ribbonW * (0.52 + 0.56 * Math.pow(u, 0.65));
+      const sweepZ = side * (0.036 + Math.pow(u, 1.08) * 0.095) + s * flareW;
+      out.set(billowX, dropY, sweepZ);
+    });
+
   const bowGroup = new THREE.Group();
-  bowGroup.position.set(0.095, -0.01, 0);
+  bowGroup.position.set(0.110, 0.012, 0);
 
-  // Subtle velvet mounting backing bar bridging the wreath inner opening so the central bow sits securely
-  const bowMountStrut = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.008, 0.008, 0.44, 8),
-    nobleFirDarkMat
-  );
-  bowMountStrut.rotation.x = Math.PI / 2;
-  bowMountStrut.position.set(-0.042, 0.01, 0);
-  bowGroup.add(bowMountStrut);
+  // Upper/Outer pair of broad structured velvet ribbon loops + Lower/Inner pair sized to the compact wreath
+  const mainLoopLeftGeo = createFoldedVelvetLoopGeo(0.185, 0.084, 0.132, -1);
+  const mainLoopRightGeo = createFoldedVelvetLoopGeo(0.185, 0.084, 0.132, 1);
+  const innerLoopLeftGeo = createFoldedVelvetLoopGeo(0.148, 0.070, 0.112, -1);
+  const innerLoopRightGeo = createFoldedVelvetLoopGeo(0.148, 0.070, 0.112, 1);
 
-  // Left & Right plump cotton-stuffed pillowy velvet bow ears (rounded inflated plush lobes)
-  const bowEarGeo = createPlushBox(0.068, 0.132, 0.168, 0.032, 0.36);
   for (const side of [-1, 1] as const) {
-    const earGroup = new THREE.Group();
-    earGroup.position.set(0.014, 0.022, side * 0.105);
-    earGroup.rotation.set(side * -0.22, side * -0.24, 0.06);
+    // Primary proud upper-horizontal velvet ribbon loop
+    const mainLoop = new THREE.Mesh(
+      side === -1 ? mainLoopLeftGeo : mainLoopRightGeo,
+      redVelvetBowMat
+    );
+    mainLoop.position.set(0.014, 0.026, 0);
+    mainLoop.rotation.x = side * -0.18;
+    mainLoop.castShadow = true;
+    mainLoop.receiveShadow = true;
+    outlines.addOutline(mainLoop, 1.016);
+    bowGroup.add(mainLoop);
 
-    const earMesh = new THREE.Mesh(bowEarGeo, redVelvetBowMat);
-    earMesh.castShadow = true;
-    earMesh.receiveShadow = true;
-    outlines.addOutline(earMesh, 1.022);
-    earGroup.add(earMesh);
-
-    // Pinched fabric pleat fold crease near the center knot
-    const crease = new THREE.Mesh(
-      createPlushBox(0.048, 0.056, 0.046, 0.016, 0.24),
+    // Secondary angled velvet ribbon loop filling upper-inner & lower-inner center naturally
+    const subLoop = new THREE.Mesh(
+      side === -1 ? innerLoopLeftGeo : innerLoopRightGeo,
       redVelvetDeepMat
     );
-    crease.position.set(-0.006, 0, -side * 0.062);
-    earGroup.add(crease);
-
-    bowGroup.add(earGroup);
+    subLoop.position.set(-0.008, 0.058, 0);
+    subLoop.rotation.x = side * 0.42;
+    subLoop.rotation.y = side * -0.10;
+    subLoop.castShadow = true;
+    subLoop.receiveShadow = true;
+    bowGroup.add(subLoop);
   }
 
-  // Puffy cotton-stuffed central velvet knot pillow
-  const bowKnot = new THREE.Mesh(
-    createPlushBox(0.076, 0.088, 0.078, 0.028, 0.34),
-    redVelvetBowMat
-  );
-  bowKnot.position.set(0.032, 0.018, 0);
-  bowKnot.castShadow = true;
-  bowKnot.receiveShadow = true;
-  outlines.addOutline(bowKnot, 1.024);
-  bowGroup.add(bowKnot);
+  // Tightly wrapped, creased velvet ribbon center cinch band
+  const knotWrap = new THREE.Mesh(createVelvetKnotWrapGeo(), redVelvetBowMat);
+  knotWrap.position.set(0.016, 0.020, 0);
+  knotWrap.castShadow = true;
+  knotWrap.receiveShadow = true;
+  outlines.addOutline(knotWrap, 1.018);
+  bowGroup.add(knotWrap);
 
-  // Two softly draped, stuffed velvet swallowtail ribbon tails cascading downward
-  const tailGeo = createPlushBox(0.034, 0.22, 0.076, 0.014, 0.26);
-  for (const [side, tiltX, tiltY, lenScale] of [
-    [-1, 0.24, 0.14, 1.02],
-    [1, -0.20, -0.12, 0.94],
+  // Two flowing wavy velvet ribbon tails with crisp swallowtail V-cut tips filling the lower wreath opening
+  for (const [side, len] of [
+    [-1, 0.295],
+    [1, 0.275],
   ] as const) {
-    const tail = new THREE.Mesh(tailGeo, redVelvetBowMat);
-    tail.position.set(0.016, -0.105, side * 0.062);
-    tail.rotation.set(tiltX, tiltY, -0.12);
-    tail.scale.set(1, lenScale, 1);
+    const tail = new THREE.Mesh(
+      createSwallowtailRibbonGeo(len, 0.112, side),
+      redVelvetBowMat
+    );
     tail.castShadow = true;
     tail.receiveShadow = true;
-    outlines.addOutline(tail, 1.02);
+    outlines.addOutline(tail, 1.015);
     bowGroup.add(tail);
   }
   wreathGroup.add(bowGroup);
@@ -2537,136 +4602,292 @@ export function buildLivingRoom(
   group.add(shelf);
   addBoxCollider('col_liv_bookshelf', -0.98, 0.50, -1.25, 0.34, 1.0, 0.96);
 
-  // Sculpted Wall Clock above floating shelf
+  // Wooden-Framed Square Wall Clock above TV Wall Shelf (木框方形挂钟, 指针停在 19:57)
+  const squareClockFaceTex = (() => {
+    const S = 512;
+    const c = document.createElement('canvas');
+    c.width = S;
+    c.height = S;
+    const ctx2d = c.getContext('2d')!;
+
+    // Warm vintage cream-ivory square dial base
+    const dialGrad = ctx2d.createRadialGradient(S * 0.5, S * 0.5, 30, S * 0.5, S * 0.5, S * 0.72);
+    dialGrad.addColorStop(0.0, '#fdfaf0');
+    dialGrad.addColorStop(0.75, '#f6efe0');
+    dialGrad.addColorStop(1.0, '#eadec8');
+    ctx2d.fillStyle = dialGrad;
+    ctx2d.fillRect(0, 0, S, S);
+
+    // Classic double-line square railway minute track
+    ctx2d.strokeStyle = '#4a3525';
+    ctx2d.lineWidth = 4;
+    ctx2d.strokeRect(34, 34, S - 68, S - 68);
+    ctx2d.lineWidth = 2;
+    ctx2d.strokeRect(48, 48, S - 96, S - 96);
+
+    // 60 perimeter ticks projected onto the square railway track + 12 bold hour ticks
+    const halfSpan = S * 0.5 - 34;
+    const innerSpan = S * 0.5 - 48;
+    for (let m = 0; m < 60; m++) {
+      const ang = (m / 60) * Math.PI * 2 - Math.PI * 0.5;
+      const dx = Math.cos(ang);
+      const dy = Math.sin(ang);
+      const scaleOut = halfSpan / Math.max(Math.abs(dx), Math.abs(dy));
+      const scaleIn = (m % 5 === 0 ? innerSpan - 6 : innerSpan) / Math.max(Math.abs(dx), Math.abs(dy));
+      ctx2d.strokeStyle = m % 5 === 0 ? '#3a2618' : 'rgba(74, 53, 37, 0.55)';
+      ctx2d.lineWidth = m % 5 === 0 ? 4.2 : 1.8;
+      ctx2d.beginPath();
+      ctx2d.moveTo(S * 0.5 + dx * scaleIn, S * 0.5 + dy * scaleIn);
+      ctx2d.lineTo(S * 0.5 + dx * scaleOut, S * 0.5 + dy * scaleOut);
+      ctx2d.stroke();
+    }
+
+    // Classic serif numerals arranged cleanly inside the square dial
+    ctx2d.fillStyle = '#382417';
+    ctx2d.font = 'bold 42px Georgia, serif';
+    ctx2d.textAlign = 'center';
+    ctx2d.textBaseline = 'middle';
+    const numSpan = S * 0.5 - 88;
+    for (let h = 1; h <= 12; h++) {
+      const ang = (h / 12) * Math.PI * 2 - Math.PI * 0.5;
+      const dx = Math.cos(ang);
+      const dy = Math.sin(ang);
+      const rSq = numSpan / Math.max(Math.abs(dx), Math.abs(dy));
+      ctx2d.fillText(String(h), S * 0.5 + dx * rSq * 0.94, S * 0.5 + dy * rSq * 0.94 + 2);
+    }
+
+    // Subtle inner decorative brass/umber hairline square & maker mark
+    ctx2d.strokeStyle = 'rgba(168, 128, 76, 0.45)';
+    ctx2d.lineWidth = 2;
+    ctx2d.strokeRect(142, 142, S - 284, S - 284);
+    ctx2d.fillStyle = 'rgba(92, 66, 44, 0.72)';
+    ctx2d.font = '600 15px Georgia, serif';
+    ctx2d.fillText('HERITAGE OAK', S * 0.5, S * 0.5 - 48);
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    return tex;
+  })();
+
   const clockGroup = new THREE.Group();
   clockGroup.position.set(7.15, 2.56, -5.08);
+
+  // Recessed square backing box
   const clockBack = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.20, 0.20, 0.038, 28),
-    mat({ color: 0x3f4e8c, roughness: 0.38, metalness: 0.25 })
+    createBeveledBox(0.036, 0.36, 0.36, 0.008, 2),
+    darkOakMat
   );
-  clockBack.rotation.z = Math.PI / 2;
+  clockBack.position.x = 0.004;
   clockBack.castShadow = true;
   clockGroup.add(clockBack);
 
-  const clockBezel = new THREE.Mesh(
-    new THREE.TorusGeometry(0.195, 0.018, 14, 32),
-    mat({ color: 0x5264ab, roughness: 0.32, metalness: 0.3 })
-  );
-  clockBezel.rotation.y = Math.PI / 2;
-  clockBezel.position.x = -0.018;
-  outlines.addOutline(clockBezel, 1.03);
-  clockGroup.add(clockBezel);
+  // Mitered Molded Warm-Oak Square Outer Frame (4 thick beveled frame rails)
+  const frameSize = 0.385;
+  const frameBarW = 0.044;
+  for (const fy of [-frameSize * 0.5 + frameBarW * 0.5, frameSize * 0.5 - frameBarW * 0.5]) {
+    const hBar = new THREE.Mesh(
+      createBeveledBox(0.044, frameBarW, frameSize, 0.007, 2),
+      oakMat
+    );
+    hBar.position.set(-0.006, fy, 0);
+    hBar.castShadow = true;
+    outlines.addOutline(hBar, 1.025);
+    clockGroup.add(hBar);
+  }
+  for (const fz of [-frameSize * 0.5 + frameBarW * 0.5, frameSize * 0.5 - frameBarW * 0.5]) {
+    const vBar = new THREE.Mesh(
+      createBeveledBox(0.044, frameSize - frameBarW * 1.9, frameBarW, 0.007, 2),
+      oakMat
+    );
+    vBar.position.set(-0.006, 0, fz);
+    vBar.castShadow = true;
+    outlines.addOutline(vBar, 1.025);
+    clockGroup.add(vBar);
+  }
 
+  // Inner Brushed-Brass Bezel Fillet framing the square dial
+  for (const by of [-0.149, 0.149]) {
+    const bRim = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.006, 0.304), handleBrassMat);
+    bRim.position.set(-0.022, by, 0);
+    clockGroup.add(bRim);
+  }
+  for (const bz of [-0.149, 0.149]) {
+    const bRim = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.304, 0.006), handleBrassMat);
+    bRim.position.set(-0.022, 0, bz);
+    clockGroup.add(bRim);
+  }
+
+  // Square Vintage Cream Dial Face
   const clockFaceMesh = new THREE.Mesh(
-    new THREE.CircleGeometry(0.185, 28),
-    mat({ map: textures.clockFace, roughness: 0.35 })
+    new THREE.PlaneGeometry(0.296, 0.296),
+    mat({ map: squareClockFaceTex, roughness: 0.42 })
   );
   clockFaceMesh.rotation.y = -Math.PI / 2;
-  clockFaceMesh.position.x = -0.022;
+  clockFaceMesh.position.x = -0.018;
   clockGroup.add(clockFaceMesh);
+
+  // Sculpted 3D Clock Hands frozen at 19:57 (7:57) + Brass Center Cap
+  // Facing -X: +Y is 12 o'clock, +Z is 3 o'clock (to viewer's right when looking East +X -> wait: looking +X, right is +Z, left is -Z!)
+  const clockHandMat = mat({ color: 0x2c1d14, roughness: 0.35, metalness: 0.25 });
+  const addFixedClockHand = (clockMinutes: number, len: number, wid: number, xOff: number, handMat = clockHandMat) => {
+    const ang = (clockMinutes / 60) * Math.PI * 2;
+    const hPivot = new THREE.Group();
+    hPivot.position.set(xOff, 0, 0);
+    // Looking toward +X (East wall): +Y is 12 o'clock, +Z is clockwise 3 o'clock -> rotate around -X by +ang!
+    hPivot.rotation.x = -ang;
+    const blade = new THREE.Mesh(
+      createBeveledBox(0.004, len, wid, 0.001, 1),
+      handMat
+    );
+    blade.position.y = len * 0.38;
+    hPivot.add(blade);
+    clockGroup.add(hPivot);
+  };
+  addFixedClockHand((7 + 57 / 60) * 5, 0.092, 0.012, -0.021); // Hour hand at ~7:57
+  addFixedClockHand(57, 0.126, 0.0085, -0.024); // Minute hand at :57
+  addFixedClockHand(22, 0.132, 0.0035, -0.026, mat({ color: 0xb83b3b, roughness: 0.35 })); // Frozen red second hand
+
+  const clockCap = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.010, 0.012, 0.010, 12),
+    handleBrassMat
+  );
+  clockCap.rotation.z = Math.PI / 2;
+  clockCap.position.x = -0.026;
+  clockGroup.add(clockCap);
+
   group.add(clockGroup);
 
   registerInteractable('liv_clock', '挂钟', '查看时间', 'living', clockGroup, () => ({
-    title: '墙壁挂钟',
+    title: '木框方形挂钟',
     message: '指针死死停在 19:57。秒针没有在走动，但窗外的黄昏却从未落幕。',
   }));
 
   // =========================================================================
-  // 6. ENLARGED MID-CENTURY COFFEE TABLE WITH SLATTED SHELF & DUAL DRAWERS
-  //    Position: (4.62, 0, -5.25), Width = 0.94m, Length = 1.68m, Height = 0.43m
+  // 6. CLASSIC AMERICAN TRADITIONAL COFFEE TABLE WITH TURNED BALUSTER LEGS,
+  //    STEPPED OGEE TABLETOP, RAISED-PANEL WOOD DRAWERS & PANELED UNDERTIER SHELF
+  //    Position: (4.62, 0, -5.25), Width = 0.96m, Length = 1.70m, Top Surface Y = 0.448m!
   // =========================================================================
   const table = new THREE.Group();
   table.position.set(4.62, 0, -5.25);
 
-  // Chunkier rounded bullnose solid-oak tabletop + under-bevel shadow rail
+  // Multi-Stepped American Ogee-Molded Overhanging Tabletop (top exact at Y = 0.448m!)
   const tableTop = new THREE.Mesh(
-    createBeveledSlab(0.96, 0.042, 1.70, 0.072, 0.014),
+    createBeveledSlab(0.98, 0.032, 1.72, 0.032, 0.010),
     oakMat
   );
-  tableTop.position.y = 0.427;
+  tableTop.position.y = 0.432;
   tableTop.castShadow = true;
   tableTop.receiveShadow = true;
-  outlines.addOutline(tableTop, 1.014);
+  outlines.addOutline(tableTop, 1.013);
   table.add(tableTop);
 
+  // Stepped American Cove Under-Molding beneath the Overhanging Tabletop
   const tableUnderBevel = new THREE.Mesh(
-    createBeveledBox(0.84, 0.016, 1.56, 0.005, 2),
+    createBeveledBox(0.92, 0.020, 1.66, 0.006, 2),
     darkOakMat
   );
-  tableUnderBevel.position.y = 0.402;
+  tableUnderBevel.position.y = 0.408;
+  tableUnderBevel.castShadow = true;
   table.add(tableUnderBevel);
 
-  // Sculpted mortise-and-tenon apron rails & corner joinery blocks
-  const apronLongGeo = createBeveledBox(0.026, 0.058, 1.32, 0.006, 2);
-  for (const ax of [-0.32, 0.32]) {
-    const rail = new THREE.Mesh(apronLongGeo, darkOakMat);
-    rail.position.set(ax, 0.376, 0);
+  // Recessed American Framed Apron Structure + Lower Beaded Apron Molding (Y = 0.334 .. 0.400)
+  const apronLongGeo = createBeveledBox(0.028, 0.066, 1.44, 0.005, 2);
+  for (const ax of [-0.39, 0.39]) {
+    const rail = new THREE.Mesh(apronLongGeo, oakMat);
+    rail.position.set(ax, 0.368, 0);
+    rail.castShadow = true;
     table.add(rail);
-  }
-  const apronShortGeo = createBeveledBox(0.64, 0.058, 0.026, 0.006, 2);
-  for (const az of [-0.65, 0.65]) {
-    const rail = new THREE.Mesh(apronShortGeo, darkOakMat);
-    rail.position.set(0, 0.376, az);
-    table.add(rail);
-  }
 
-  // Dual side-by-side molded utility drawers on both -X (sofa) & +X (TV) faces
-  for (const side of [-1, 1] as const) {
-    const centerStile = new THREE.Mesh(
-      createBeveledBox(0.028, 0.058, 0.036, 0.005, 2),
+    const lowerBead = new THREE.Mesh(
+      createBeveledBox(0.036, 0.012, 1.46, 0.003, 2),
       darkOakMat
     );
-    centerStile.position.set(side * 0.32, 0.376, 0);
+    lowerBead.position.set(ax, 0.334, 0);
+    table.add(lowerBead);
+  }
+  const apronShortGeo = createBeveledBox(0.78, 0.066, 0.028, 0.005, 2);
+  for (const az of [-0.73, 0.73]) {
+    const rail = new THREE.Mesh(apronShortGeo, oakMat);
+    rail.position.set(0, 0.368, az);
+    rail.castShadow = true;
+    table.add(rail);
+
+    // American Recessed Panel Molding on Short End Aprons
+    const endInset = new THREE.Mesh(
+      createBeveledBox(0.58, 0.038, 0.012, 0.003, 2),
+      darkOakMat
+    );
+    endInset.position.set(0, 0.368, az + (az < 0 ? -0.012 : 0.012));
+    table.add(endInset);
+
+    const shortBead = new THREE.Mesh(
+      createBeveledBox(0.80, 0.012, 0.036, 0.003, 2),
+      darkOakMat
+    );
+    shortBead.position.set(0, 0.334, az);
+    table.add(shortBead);
+  }
+
+  // Dual Symmetrical American Raised-Panel Wood Drawers (same warm peach-oak family + vintage brass pulls!)
+  for (const side of [-1, 1] as const) {
+    const centerStile = new THREE.Mesh(
+      createBeveledBox(0.034, 0.068, 0.048, 0.005, 2),
+      darkOakMat
+    );
+    centerStile.position.set(side * 0.39, 0.368, 0);
     table.add(centerStile);
 
-    for (const dz of [-0.31, 0.31]) {
+    for (const dz of [-0.355, 0.355]) {
       const ctDrawer = createMoldedDrawerFront(
-        0.56,
-        0.054,
-        0.022,
+        0.62,
+        0.056,
+        0.024,
         'x',
-        drawerWhiteMat,
-        drawerMoldingMat,
+        oakMat,
+        darkOakMat,
         handleBrassMat,
         side
       );
-      ctDrawer.position.set(side * 0.324, 0.376, dz);
+      ctDrawer.position.set(side * 0.395, 0.368, dz);
       table.add(ctDrawer);
     }
   }
 
-  // Lower Slatted Magazine Rack Shelf (Y = 0.175m) suspended between the 4 splayed legs
-  for (const lx of [-0.27, 0.27]) {
-    const shelfRail = new THREE.Mesh(
-      createBeveledBox(0.024, 0.024, 1.28, 0.005, 2),
+  // Framed Paneled American Solid-Oak Undertier Display Shelf (top at Y = 0.148m)
+  const lowerShelfOuter = new THREE.Mesh(
+    createBeveledSlab(0.82, 0.026, 1.54, 0.018, 0.006),
+    oakMat
+  );
+  lowerShelfOuter.position.y = 0.135;
+  lowerShelfOuter.castShadow = true;
+  lowerShelfOuter.receiveShadow = true;
+  outlines.addOutline(lowerShelfOuter, 1.012);
+  table.add(lowerShelfOuter);
+
+  for (const pz of [-0.36, 0.36]) {
+    const shelfGroove = new THREE.Mesh(
+      createBeveledBox(0.66, 0.006, 0.62, 0.002, 1),
       darkOakMat
     );
-    shelfRail.position.set(lx, 0.168, 0);
-    table.add(shelfRail);
-  }
-  for (const sz of [-0.62, 0.62]) {
-    const shelfCross = new THREE.Mesh(
-      createBeveledBox(0.56, 0.024, 0.026, 0.005, 2),
-      darkOakMat
+    shelfGroove.position.set(0, 0.147, pz);
+    table.add(shelfGroove);
+
+    const shelfRaised = new THREE.Mesh(
+      createBeveledBox(0.61, 0.008, 0.57, 0.003, 1),
+      oakMat
     );
-    shelfCross.position.set(0, 0.168, sz);
-    table.add(shelfCross);
-  }
-  const slatRackGeo = createBeveledBox(0.54, 0.012, 0.056, 0.003, 1);
-  for (let s = -4; s <= 4; s++) {
-    const slat = new THREE.Mesh(slatRackGeo, oakMat);
-    slat.position.set(0, 0.178, s * 0.132);
-    slat.castShadow = true;
-    slat.receiveShadow = true;
-    table.add(slat);
+    shelfRaised.position.set(0, 0.149, pz);
+    shelfRaised.receiveShadow = true;
+    table.add(shelfRaised);
   }
 
-  // Decorative wooden catch-all tray & art magazine resting on the lower slatted shelf
+  // Decorative wooden catch-all tray & art magazine resting flush on the American undertier shelf
   const lowerTray = new THREE.Mesh(
     createBeveledSlab(0.34, 0.028, 0.44, 0.024, 0.006),
     darkOakMat
   );
-  lowerTray.position.set(-0.02, 0.196, -0.24);
+  lowerTray.position.set(-0.02, 0.166, -0.24);
   lowerTray.rotation.y = 0.08;
   table.add(lowerTray);
 
@@ -2674,31 +4895,56 @@ export function buildLivingRoom(
     createBookGeometry(0.24, 0.022, 0.32, 1),
     bookAtlasMat
   );
-  lowerMag.position.set(0.04, 0.195, 0.28);
+  lowerMag.position.set(0.04, 0.164, 0.28);
   lowerMag.rotation.y = -0.18;
   table.add(lowerMag);
 
-  // InstancedMesh for 4 Turned Splayed Oak Legs under Enlarged Coffee Table
-  const tableLegGeo = createTurnedLegGeometry(0.024, 0.014, 0.415);
-  const tableLegsInst = new THREE.InstancedMesh(tableLegGeo, oakMat, 4);
-  tableLegsInst.castShadow = true;
-  const tableOrigin = new THREE.Vector3(4.62, 0, -5.25);
-  const tableLegCoords: [number, number][] = [
-    [-0.32, -0.64],
-    [0.32, -0.64],
-    [-0.32, 0.64],
-    [0.32, 0.64],
+  // 4 Chunky Vertical American Turned Baluster / Spindle Legs (美式车削葫芦方柱腿)
+  const balusterProfile = [
+    new THREE.Vector2(0, 0),
+    new THREE.Vector2(0.022, 0),       // Bottom floor pad
+    new THREE.Vector2(0.034, 0.022),   // Bun foot swell
+    new THREE.Vector2(0.020, 0.048),   // Ankle pinch
+    new THREE.Vector2(0.028, 0.060),   // Lower ring bead
+    new THREE.Vector2(0.022, 0.115),   // Lower shaft into shelf block
+    new THREE.Vector2(0.022, 0.160),   // Emerging above shelf block
+    new THREE.Vector2(0.032, 0.175),   // Mid collar ring
+    new THREE.Vector2(0.023, 0.192),   // Neck pinch
+    new THREE.Vector2(0.038, 0.245),   // Plump American baluster urn belly!
+    new THREE.Vector2(0.022, 0.305),   // Upper taper neck
+    new THREE.Vector2(0.032, 0.320),   // Upper ring bead
+    new THREE.Vector2(0.026, 0.334),   // Join into top square post
   ];
-  for (let i = 0; i < tableLegCoords.length; i++) {
-    const [lx, lz] = tableLegCoords[i];
-    tableLegsInst.setMatrixAt(
-      i,
-      composeSplayedLegMatrix(lx, 0.402, lz, 0.415, 0.18, 0.14, tableOrigin)
-    );
+  const balusterLegGeo = new THREE.LatheGeometry(balusterProfile, 18);
+  const legSquarePostGeo = createBeveledBox(0.068, 0.078, 0.068, 0.006, 2);
+  const legShelfBlockGeo = createBeveledBox(0.064, 0.044, 0.064, 0.005, 2);
+
+  for (const [lx, lz] of [
+    [-0.39, -0.73],
+    [0.39, -0.73],
+    [-0.39, 0.73],
+    [0.39, 0.73],
+  ] as const) {
+    const turnedCol = new THREE.Mesh(balusterLegGeo, oakMat);
+    turnedCol.position.set(lx, 0, lz);
+    turnedCol.castShadow = true;
+    turnedCol.receiveShadow = true;
+    outlines.addOutline(turnedCol, 1.03);
+    table.add(turnedCol);
+
+    // Top square pommel block joining the molded apron
+    const topBlock = new THREE.Mesh(legSquarePostGeo, darkOakMat);
+    topBlock.position.set(lx, 0.369, lz);
+    topBlock.castShadow = true;
+    outlines.addOutline(topBlock, 1.025);
+    table.add(topBlock);
+
+    // Lower square pommel block anchoring the undertier shelf
+    const shelfBlock = new THREE.Mesh(legShelfBlockGeo, darkOakMat);
+    shelfBlock.position.set(lx, 0.135, lz);
+    shelfBlock.castShadow = true;
+    table.add(shelfBlock);
   }
-  tableLegsInst.instanceMatrix.needsUpdate = true;
-  tableLegsInst.computeBoundingSphere();
-  group.add(tableLegsInst);
 
   // 1) Sculpted Walnut & Brushed-Brass Headphone Stand + Over-Ear Studio Headphones
   const headphoneStandGroup = new THREE.Group();
@@ -2995,6 +5241,119 @@ export function buildLivingRoom(
   outlines.addOutline(blueCover, 1.045);
   blueBookGroup.add(blueCover);
   table.add(blueBookGroup);
+
+  // Wooden Serving Tray with Warm Glowing Scented Candle on Coffee Table (茶几木质托盘 + 暖光香薰蜡烛)
+  const candleTrayGroup = new THREE.Group();
+  candleTrayGroup.position.set(-0.22, 0.448, 0.36);
+  candleTrayGroup.rotation.y = 0.14;
+
+  const trayBase = new THREE.Mesh(
+    createBeveledSlab(0.24, 0.014, 0.32, 0.036, 0.004),
+    darkOakMat
+  );
+  trayBase.position.y = 0.007;
+  trayBase.castShadow = true;
+  trayBase.receiveShadow = true;
+  outlines.addOutline(trayBase, 1.028);
+  candleTrayGroup.add(trayBase);
+
+  // Raised tray rim walls + brushed-brass side loop handles
+  for (const rz of [-0.152, 0.152]) {
+    const rim = new THREE.Mesh(createBeveledBox(0.23, 0.024, 0.014, 0.003, 2), oakMat);
+    rim.position.set(0, 0.018, rz);
+    candleTrayGroup.add(rim);
+
+    const handle = new THREE.Mesh(
+      new THREE.TorusGeometry(0.022, 0.004, 8, 16, Math.PI),
+      handleBrassMat
+    );
+    handle.position.set(0, 0.028, rz);
+    candleTrayGroup.add(handle);
+  }
+  for (const rx of [-0.112, 0.112]) {
+    const rim = new THREE.Mesh(createBeveledBox(0.014, 0.024, 0.30, 0.003, 2), oakMat);
+    rim.position.set(rx, 0.018, 0);
+    candleTrayGroup.add(rim);
+  }
+
+  // Amber frosted-glass scented candle jar + melted cream wax + glowing flame + warm PointLight
+  const candleJarMat = mat({
+    color: 0xdca064,
+    roughness: 0.24,
+    metalness: 0.05,
+    transparent: true,
+    opacity: 0.84,
+  });
+  const candleJar = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.044, 0.040, 0.086, 18),
+    candleJarMat
+  );
+  candleJar.position.set(0.01, 0.056, -0.02);
+  candleJar.castShadow = true;
+  // Static ceramic candle jar merges into LivingRoomMergedStaticMesh (only flame & halo remain dynamic!)
+  candleTrayGroup.add(candleJar);
+
+  const candleWax = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.039, 0.036, 0.068, 16),
+    mat({ color: 0xfbf2e0, roughness: 0.55, metalness: 0.0 })
+  );
+  candleWax.position.set(0.01, 0.048, -0.02);
+  candleTrayGroup.add(candleWax);
+
+  // Minimalist cream scent label band around the candle jar
+  const candleLabel = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.0445, 0.0425, 0.036, 18, 1, true, -0.8, 1.6),
+    mat({ color: 0xfaf4e8, roughness: 0.85, side: THREE.DoubleSide })
+  );
+  candleLabel.position.set(0.01, 0.054, -0.02);
+  candleTrayGroup.add(candleLabel);
+
+  // Glowing teardrop candle flame + soft warm additive halo + near-field warm PointLight
+  const flameMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.009, 10, 8),
+    new THREE.MeshBasicMaterial({ color: 0xffe494 })
+  );
+  flameMesh.scale.set(0.72, 1.85, 0.72);
+  flameMesh.position.set(0.01, 0.104, -0.02);
+  flameMesh.userData.dynamic = true;
+  candleTrayGroup.add(flameMesh);
+
+  const flameHalo = new THREE.Mesh(
+    new THREE.SphereGeometry(0.036, 10, 8),
+    new THREE.MeshBasicMaterial({
+      color: 0xffcf70,
+      transparent: true,
+      opacity: 0.30,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    })
+  );
+  flameHalo.position.set(0.01, 0.106, -0.02);
+  flameHalo.userData.dynamic = true;
+  candleTrayGroup.add(flameHalo);
+
+  const candleLight = new THREE.PointLight(0xffca72, 0.90, 2.3, 2.0);
+  candleLight.position.set(0.01, 0.145, -0.02);
+  candleTrayGroup.add(candleLight);
+
+  // Vintage matchbox & petite evergreen sprig resting beside the candle inside the wooden tray
+  const matchbox = new THREE.Mesh(
+    createBeveledBox(0.046, 0.014, 0.068, 0.002, 1),
+    mat({ color: 0xb8363f, roughness: 0.72 })
+  );
+  matchbox.position.set(-0.042, 0.021, 0.075);
+  matchbox.rotation.y = -0.35;
+  candleTrayGroup.add(matchbox);
+
+  const traySprig = new THREE.Mesh(
+    new THREE.ConeGeometry(0.016, 0.075, 6),
+    mat({ color: 0x2e7a4a, roughness: 0.75 })
+  );
+  traySprig.rotation.set(Math.PI * 0.48, 0.4, -0.6);
+  traySprig.position.set(0.045, 0.024, 0.068);
+  candleTrayGroup.add(traySprig);
+
+  table.add(candleTrayGroup);
 
   // Open Double-Page Illustrated Botanical Magazine & Pink Heart Notepad on Coffee Table (shifted slightly +X to give controllers sofa-side room)
   const openMagGroup = new THREE.Group();
@@ -3598,6 +5957,456 @@ export function buildLivingRoom(
   outlines.addOutline(rightArm, 1.015);
   sofa.add(rightArm);
 
+  // Gently Fluttering Christmas Reindeer & Snowflake Knit Tapestry Draped over the Large Sofa Backrest
+  // (大沙发靠背圣诞节驯鹿雪花图案挂毯，挂在靠背上且下摆随微风轻轻飘动！)
+  const sofaReindeerTapestryTex = (() => {
+    const W = 512;
+    const H = 512;
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const tctx = c.getContext('2d')!;
+
+    // 1) Cozy Nordic Crimson-Red Wool Knit Base
+    tctx.fillStyle = '#b42937';
+    tctx.fillRect(0, 0, W, H);
+
+    // 2) Fair-Isle Pine-Green & Cream-Ivory Geometric Knit Bands (top crest, upper/lower borders)
+    const drawBand = (y0: number, h: number, col: string) => {
+      tctx.fillStyle = col;
+      tctx.fillRect(0, y0, W, h);
+    };
+    drawBand(0, 38, '#28623d');
+    drawBand(38, 14, '#f8f2e4');
+    drawBand(116, 26, '#28623d');
+    drawBand(142, 10, '#f8f2e4');
+    drawBand(396, 10, '#f8f2e4');
+    drawBand(406, 30, '#28623d');
+    drawBand(436, 14, '#f8f2e4');
+    drawBand(450, 34, '#b42937');
+
+    // Cream Nordic diamonds marching along green bands
+    tctx.fillStyle = '#f8f2e4';
+    for (const by of [19, 129, 421]) {
+      for (let x = 16; x < W; x += 32) {
+        tctx.beginPath();
+        tctx.moveTo(x, by - 8);
+        tctx.lineTo(x + 8, by);
+        tctx.lineTo(x, by + 8);
+        tctx.lineTo(x - 8, by);
+        tctx.closePath();
+        tctx.fill();
+      }
+    }
+
+    // Helper: 8-Pointed Nordic Snowflake
+    const drawKnitSnowflake = (cx: number, cy: number, rad: number, col = '#fbf7ec', lw = 3.2) => {
+      tctx.save();
+      tctx.translate(cx, cy);
+      tctx.strokeStyle = col;
+      tctx.lineWidth = lw;
+      tctx.lineCap = 'round';
+      for (let a = 0; a < 8; a++) {
+        const ang = (a / 8) * Math.PI * 2;
+        const dx = Math.cos(ang);
+        const dy = Math.sin(ang);
+        const rLen = a % 2 === 0 ? rad : rad * 0.78;
+        tctx.beginPath();
+        tctx.moveTo(0, 0);
+        tctx.lineTo(dx * rLen, dy * rLen);
+        tctx.stroke();
+        if (a % 2 === 0) {
+          const mx = dx * rLen * 0.58;
+          const my = dy * rLen * 0.58;
+          for (const sgn of [-1, 1]) {
+            const ba = ang + sgn * 0.72;
+            tctx.beginPath();
+            tctx.moveTo(mx, my);
+            tctx.lineTo(mx + Math.cos(ba) * rad * 0.30, my + Math.sin(ba) * rad * 0.30);
+            tctx.stroke();
+          }
+        }
+      }
+      tctx.restore();
+    };
+
+    // Helper: Charming Stylized Prancing Christmas Reindeer Silhouette (圣诞驯鹿图案)
+    const drawReindeer = (cx: number, cy: number, sc: number, flipX = 1) => {
+      tctx.save();
+      tctx.translate(cx, cy);
+      tctx.scale(flipX * sc, sc);
+      tctx.fillStyle = '#fbf6ea';
+      tctx.strokeStyle = '#fbf6ea';
+      tctx.lineCap = 'round';
+      tctx.lineJoin = 'round';
+
+      // Graceful arched torso
+      tctx.beginPath();
+      tctx.ellipse(0, 6, 28, 12, -0.06, 0, Math.PI * 2);
+      tctx.fill();
+
+      // Proud neck & head
+      tctx.beginPath();
+      tctx.moveTo(16, 2);
+      tctx.quadraticCurveTo(28, -14, 30, -28);
+      tctx.lineTo(44, -26);
+      tctx.quadraticCurveTo(46, -20, 38, -17);
+      tctx.quadraticCurveTo(32, -8, 25, 10);
+      tctx.closePath();
+      tctx.fill();
+
+      // Cute ear & tiny fluffy tail
+      tctx.beginPath();
+      tctx.ellipse(27, -30, 5.5, 2.5, -0.7, 0, Math.PI * 2);
+      tctx.fill();
+      tctx.beginPath();
+      tctx.ellipse(-28, -1, 6, 3.2, -0.5, 0, Math.PI * 2);
+      tctx.fill();
+
+      // Branching Antlers (驯鹿鹿角)
+      tctx.lineWidth = 3.2;
+      tctx.beginPath();
+      tctx.moveTo(30, -28);
+      tctx.quadraticCurveTo(22, -46, 12, -56);
+      tctx.moveTo(22, -42);
+      tctx.lineTo(28, -54);
+      tctx.moveTo(18, -48);
+      tctx.lineTo(8, -48);
+      tctx.moveTo(33, -29);
+      tctx.quadraticCurveTo(36, -45, 42, -55);
+      tctx.moveTo(37, -43);
+      tctx.lineTo(46, -46);
+      tctx.stroke();
+
+      // Four slender prancing legs
+      tctx.lineWidth = 4.6;
+      tctx.beginPath();
+      // Front legs (one raised prancing, one planted)
+      tctx.moveTo(19, 13);
+      tctx.lineTo(28, 28);
+      tctx.lineTo(35, 44);
+      tctx.moveTo(14, 14);
+      tctx.lineTo(10, 32);
+      tctx.lineTo(14, 46);
+      // Hind legs
+      tctx.moveTo(-18, 12);
+      tctx.lineTo(-27, 29);
+      tctx.lineTo(-34, 45);
+      tctx.moveTo(-13, 14);
+      tctx.lineTo(-14, 32);
+      tctx.lineTo(-19, 46);
+      tctx.stroke();
+
+      // Festive tiny pine-green scarf collar around reindeer's neck
+      tctx.strokeStyle = '#2c7648';
+      tctx.lineWidth = 4.5;
+      tctx.beginPath();
+      tctx.moveTo(19, -10);
+      tctx.lineTo(31, -8);
+      tctx.stroke();
+
+      tctx.restore();
+    };
+
+    // Helper: Stylized Nordic Knit Pine Tree
+    const drawKnitTree = (cx: number, cy: number, sc: number) => {
+      tctx.save();
+      tctx.translate(cx, cy);
+      tctx.scale(sc, sc);
+      tctx.fillStyle = '#2d7548';
+      for (const [y0, w, h] of [
+        [-30, 14, 18],
+        [-16, 22, 20],
+        [0, 30, 22],
+      ]) {
+        tctx.beginPath();
+        tctx.moveTo(0, y0);
+        tctx.lineTo(w, y0 + h);
+        tctx.lineTo(-w, y0 + h);
+        tctx.closePath();
+        tctx.fill();
+      }
+      tctx.fillStyle = '#f8e096';
+      tctx.beginPath();
+      tctx.arc(0, -34, 4.5, 0, Math.PI * 2);
+      tctx.fill();
+      tctx.restore();
+    };
+
+    // Upper crest snowflakes (visible along top of sofa backrest)
+    for (let i = 0; i < 6; i++) {
+      drawKnitSnowflake(42 + i * 85, 82, 20, '#fbf6ea', 2.8);
+    }
+
+    // Center Showcase Band (Y = 152..396 -> hangs right across the back of the large sofa!)
+    // 3 Prancing Christmas Reindeer + Nordic Snowflakes & Mini Pine Trees
+    drawReindeer(112, 278, 1.05, 1);
+    drawReindeer(256, 272, 1.18, -1);
+    drawReindeer(400, 278, 1.05, 1);
+
+    // Ornate snowflakes floating above & between the reindeer
+    drawKnitSnowflake(52, 200, 22, '#fbf6ea', 2.8);
+    drawKnitSnowflake(184, 198, 28, '#f8e3a2', 3.2);
+    drawKnitSnowflake(328, 198, 28, '#f8e3a2', 3.2);
+    drawKnitSnowflake(460, 200, 22, '#fbf6ea', 2.8);
+    drawKnitSnowflake(184, 344, 18, '#fbf6ea', 2.4);
+    drawKnitSnowflake(328, 344, 18, '#fbf6ea', 2.4);
+    drawKnitTree(42, 344, 0.85);
+    drawKnitTree(470, 344, 0.85);
+
+    // 4-sided stitched blanket binding / whipstitch hem border (毛毯四周封边 + 锁边针脚，告别生硬直切边缘!)
+    tctx.strokeStyle = '#f6efe0';
+    tctx.lineWidth = 22;
+    tctx.strokeRect(11, 11, W - 22, H - 22);
+    tctx.strokeStyle = '#255a37';
+    tctx.lineWidth = 8;
+    tctx.strokeRect(24, 24, W - 48, H - 48);
+    // Decorative whipstitch blanket-edge thread dashes around all 4 sides
+    tctx.save();
+    tctx.strokeStyle = '#b42937';
+    tctx.lineWidth = 2.6;
+    tctx.setLineDash([6, 6]);
+    tctx.strokeRect(14, 14, W - 28, H - 28);
+    tctx.restore();
+
+    // Tactile wool-knit stitch micro-grain across entire tapestry
+    for (let y = 0; y < H; y += 4) {
+      tctx.fillStyle = y % 8 === 0 ? 'rgba(255, 250, 240, 0.08)' : 'rgba(52, 12, 18, 0.09)';
+      tctx.fillRect(0, y, W, 1.5);
+    }
+    for (let x = 0; x < W; x += 4) {
+      tctx.fillStyle = x % 8 === 0 ? 'rgba(255, 250, 240, 0.06)' : 'rgba(52, 12, 18, 0.07)';
+      tctx.fillRect(x, 0, 1.5, H);
+    }
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.anisotropy = 4;
+    return tex;
+  })();
+
+  // Negative windSway (-0.76) activates UV-anchored gentle cloth flutter (top locked safely above sofa, hem sways!)
+  const sofaTapestryMat = mat({
+    map: sofaReindeerTapestryTex,
+    bumpMap: textures.plushBump,
+    bumpScale: 0.016,
+    color: 0xffffff,
+    roughness: 0.92,
+    metalness: 0.0,
+    rimScale: 1.28,
+    side: THREE.DoubleSide,
+    windSway: -0.76,
+  });
+
+  // Casually Crumpled & Diagonally Draped Throw Blanket over the Large Sofa Backrest
+  // (胡乱折叠斜披在沙发靠背上的圣诞驯鹿毛毯：斜角垂坠 + 自然堆褶 + 圆润封边 + 严控安全间隙防穿模!)
+  const tapestryCurvePts = [
+    new THREE.Vector3(0, 0.78, -0.078),  // Casually draped down front-top of cushion (clear of cushion front!)
+    new THREE.Vector3(0, 1.045, -0.175), // Rising smoothly over front shoulder with +2cm clearance
+    new THREE.Vector3(0, 1.064, -0.295), // Resting loftily over top crest of backrest (zero clipping!)
+    new THREE.Vector3(0, 0.992, -0.448), // Rounding over rear top shoulder
+    new THREE.Vector3(0, 0.800, -0.538), // Casually cascading down upper-back
+    new THREE.Vector3(0, 0.515, -0.556), // Mid-back loose rumpled hang
+    new THREE.Vector3(0, 0.215, -0.568), // Free-hanging hem fluttering softly!
+  ];
+  const tapestryCurve = new THREE.CatmullRomCurve3(tapestryCurvePts);
+  const tapSegU = 42;
+  const tapSegV = 34;
+  const tapGeo = new THREE.BufferGeometry();
+  const tapPos: number[] = [];
+  const tapUvs: number[] = [];
+  const tapIndices: number[] = [];
+  for (let iu = 0; iu <= tapSegU; iu++) {
+    const t = iu / tapSegU; // 0 (front-top) -> 1 (rear hanging hem)
+    const pt = tapestryCurve.getPoint(t);
+    const uvY = t <= 0.38 ? 1.0 : THREE.MathUtils.clamp(1.0 - (t - 0.38) / 0.62, 0, 1);
+    const hangT = THREE.MathUtils.smoothstep(t, 0.34, 1.0);
+
+    // Diagonal skew across the backrest (starts left-of-center in front, drapes diagonally toward right-center in back!)
+    const diagShiftX = THREE.MathUtils.lerp(-0.46, 0.36, Math.pow(t, 0.92)) + Math.sin(t * Math.PI * 1.4) * 0.08;
+    // Organic bunched width: gathered narrower at the crest fold, flaring asymmetrically at the draped ends (not rectangular!)
+    const localWidth = 1.24 - 0.24 * Math.sin(t * Math.PI) + 0.16 * Math.sin(t * Math.PI * 2.2);
+
+    for (let iv = 0; iv <= tapSegV; iv++) {
+      const s = iv / tapSegV; // 0..1 across width
+      const sCentered = s - 0.5;
+
+      // Softly rounded organic corners & wavy uneven edge silhouette (别那么四方四正!)
+      const edgeProx = Math.max(0, (Math.abs(sCentered) - 0.34) / 0.16);
+      const cornerRound = edgeProx * edgeProx * (Math.pow(1 - t, 3.0) + Math.pow(t, 3.0));
+      const x = diagShiftX + sCentered * localWidth * (1.0 - cornerRound * 0.18);
+
+      // Asymmetric diagonal hem drop (one corner hangs ~14cm lower than the other like a casually tossed throw!)
+      const diagDropY = sCentered * 0.22 * (0.25 + 0.75 * hangT) + Math.sin(s * Math.PI * 3.2 + t * 2.8) * 0.024 * hangT;
+
+      // Natural crumpled diagonal fold ridges + soft folded-over edge curl (all pushed outward >= 0 to prevent clipping!)
+      const fold1 = Math.sin(s * Math.PI * 3.5 + t * 4.2) * 0.018;
+      const fold2 = Math.cos(s * Math.PI * 6.0 - t * 3.1) * 0.010;
+      const crestBunchY = (1.0 - hangT) * Math.max(0, fold1 + 0.012) * 0.85;
+      const rearBillowZ = -(Math.abs(fold1) + Math.max(0, fold2) + 0.008) * hangT;
+      // Soft rolled blanket-binding lip curl at left/right edges
+      const edgeCurlOut = edgeProx * edgeProx * 0.012 * (hangT > 0.2 ? -1 : 1);
+
+      tapPos.push(
+        x,
+        pt.y + diagDropY + crestBunchY,
+        pt.z + rearBillowZ + edgeCurlOut * (hangT > 0.2 ? 1 : 0)
+      );
+      tapUvs.push(s, uvY);
+    }
+  }
+  for (let iu = 0; iu < tapSegU; iu++) {
+    for (let iv = 0; iv < tapSegV; iv++) {
+      const a = iu * (tapSegV + 1) + iv;
+      const b = a + 1;
+      const cIdx = a + (tapSegV + 1);
+      const d = cIdx + 1;
+      tapIndices.push(a, cIdx, b, b, cIdx, d);
+    }
+  }
+  tapGeo.setAttribute('position', new THREE.Float32BufferAttribute(tapPos, 3));
+  tapGeo.setAttribute('uv', new THREE.Float32BufferAttribute(tapUvs, 2));
+  tapGeo.setIndex(tapIndices);
+  tapGeo.computeVertexNormals();
+
+  // Casually Folded-Over Second Layer Flap tucked diagonally across the top-left shoulder of the throw (自然叠褶层次!)
+  const foldFlapPts = [
+    new THREE.Vector3(0, 1.072, -0.255),
+    new THREE.Vector3(0, 1.028, -0.435),
+    new THREE.Vector3(0, 0.825, -0.558),
+    new THREE.Vector3(0, 0.565, -0.578),
+  ];
+  const foldFlapCurve = new THREE.CatmullRomCurve3(foldFlapPts);
+  const ffGeo = new THREE.BufferGeometry();
+  const ffPos: number[] = [];
+  const ffUvs: number[] = [];
+  const ffIdx: number[] = [];
+  const ffU = 20;
+  const ffV = 16;
+  for (let iu = 0; iu <= ffU; iu++) {
+    const t = iu / ffU;
+    const pt = foldFlapCurve.getPoint(t);
+    const uvY = THREE.MathUtils.clamp(1.0 - t * 0.85, 0.15, 1.0);
+    const centerX = THREE.MathUtils.lerp(-0.56, -0.18, t);
+    const w = THREE.MathUtils.lerp(0.46, 0.30, t);
+    for (let iv = 0; iv <= ffV; iv++) {
+      const s = iv / ffV;
+      const sc = s - 0.5;
+      const waveZ = -Math.abs(Math.sin(s * Math.PI * 2.5 + t * 3.0)) * 0.014;
+      ffPos.push(centerX + sc * w, pt.y + sc * 0.12 * t, pt.z + waveZ);
+      ffUvs.push(s * 0.65, uvY);
+    }
+  }
+  for (let iu = 0; iu < ffU; iu++) {
+    for (let iv = 0; iv < ffV; iv++) {
+      const a = iu * (ffV + 1) + iv;
+      const b = a + 1;
+      const cIdx = a + (ffV + 1);
+      const d = cIdx + 1;
+      ffIdx.push(a, cIdx, b, b, cIdx, d);
+    }
+  }
+  ffGeo.setAttribute('position', new THREE.Float32BufferAttribute(ffPos, 3));
+  ffGeo.setAttribute('uv', new THREE.Float32BufferAttribute(ffUvs, 2));
+  ffGeo.setIndex(ffIdx);
+  ffGeo.computeVertexNormals();
+
+  // Merge main diagonally-draped throw + folded top-left flap into ONE single animated mesh (1 draw call!)
+  const mergedThrowGeo = BufferGeometryUtils.mergeGeometries([tapGeo, ffGeo], false)!;
+  const reindeerTapestryMesh = new THREE.Mesh(mergedThrowGeo, sofaTapestryMat);
+  reindeerTapestryMesh.castShadow = false;
+  reindeerTapestryMesh.receiveShadow = true;
+  reindeerTapestryMesh.userData.dynamic = true;
+  sofa.add(reindeerTapestryMesh);
+
+  // Casually Draped Light-Brown Plush Fleece Throw Blanket over the Right Sofa Armrest (淡棕色慵懒毛绒盖毯)
+  const throwBlanketMat = mat({
+    map: textures.plushFabric,
+    bumpMap: textures.plushBump,
+    bumpScale: 0.018,
+    color: 0xcfa986,
+    roughness: 0.94,
+    metalness: 0.0,
+    rimScale: 1.42,
+    side: THREE.DoubleSide,
+  });
+  const blanketCurvePts = [
+    new THREE.Vector3(1.24, 0.515, 0.12),   // Casually pooled on the right seat cushion
+    new THREE.Vector3(1.42, 0.565, 0.14),   // Climbing gently up inner armrest slope
+    new THREE.Vector3(1.52, 0.745, 0.10),   // Softly cresting inner top shoulder of armrest
+    new THREE.Vector3(1.62, 0.768, 0.08),   // Resting plushly over armrest crown
+    new THREE.Vector3(1.725, 0.710, 0.06),  // Rounding down outer shoulder of armrest
+    new THREE.Vector3(1.750, 0.460, 0.05),  // Cascading lazily down outer side of sofa
+    new THREE.Vector3(1.762, 0.220, 0.04),  // Hanging soft hem just above plinth
+  ];
+  const blanketCurve = new THREE.CatmullRomCurve3(blanketCurvePts);
+  const blanketSegU = 36;
+  const blanketSegV = 18;
+  const blanketWidth = 0.64;
+  const blanketGeo = new THREE.BufferGeometry();
+  const bPositions: number[] = [];
+  const bUvs: number[] = [];
+  const bIndices: number[] = [];
+
+  for (let iu = 0; iu <= blanketSegU; iu++) {
+    const u = iu / blanketSegU;
+    const centerPt = blanketCurve.getPoint(u);
+    const tangent = blanketCurve.getTangent(u);
+    // Outward normal in XY plane (perpendicular to curve tangent & Z axis)
+    const nx = -tangent.y;
+    const ny = tangent.x;
+    for (let iv = 0; iv <= blanketSegV; iv++) {
+      const v = iv / blanketSegV;
+      // Casual diagonal drape skew + soft organic folded fabric waves along the blanket!
+      const skewZ = (u - 0.45) * 0.09;
+      const localZ = (v - 0.5) * blanketWidth * (0.94 + 0.12 * Math.sin(u * Math.PI)) + skewZ;
+      const ripple =
+        Math.sin(v * Math.PI * 5.0 + u * 3.5) * 0.012 * (0.4 + 0.6 * Math.sin(u * Math.PI)) +
+        Math.cos(v * Math.PI * 3.0 - u * 4.0) * 0.008;
+      const thickOff = 0.008 + ripple;
+      bPositions.push(
+        centerPt.x + nx * thickOff,
+        centerPt.y + ny * thickOff,
+        centerPt.z + localZ
+      );
+      bUvs.push(u * 2.2, v * 1.4);
+    }
+  }
+  for (let iu = 0; iu < blanketSegU; iu++) {
+    for (let iv = 0; iv < blanketSegV; iv++) {
+      const a = iu * (blanketSegV + 1) + iv;
+      const b = (iu + 1) * (blanketSegV + 1) + iv;
+      const c = (iu + 1) * (blanketSegV + 1) + (iv + 1);
+      const d = iu * (blanketSegV + 1) + (iv + 1);
+      bIndices.push(a, b, d, b, c, d);
+    }
+  }
+  blanketGeo.setAttribute('position', new THREE.Float32BufferAttribute(bPositions, 3));
+  blanketGeo.setAttribute('uv', new THREE.Float32BufferAttribute(bUvs, 2));
+  blanketGeo.setIndex(bIndices);
+  blanketGeo.computeVertexNormals();
+
+  const drapedBlanket = new THREE.Mesh(blanketGeo, throwBlanketMat);
+  drapedBlanket.castShadow = true;
+  drapedBlanket.receiveShadow = true;
+  outlines.addOutline(drapedBlanket, 1.012);
+  sofa.add(drapedBlanket);
+
+  // Soft cream-camel knotted tassel fringes along the hanging outer hem of the throw blanket
+  const blanketFringeMat = mat({ color: 0xe6d2bc, roughness: 0.94 });
+  for (let tf = 0; tf < 14; tf++) {
+    const fz = 0.08 + ((tf / 13) - 0.5) * 0.60;
+    const tassel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.005, 0.0035, 0.068, 6),
+      blanketFringeMat
+    );
+    tassel.position.set(1.762, 0.186, fz);
+    tassel.rotation.x = ((tf % 3) - 1) * 0.08;
+    sofa.add(tassel);
+  }
+
   // Layer 3: Colorful Macaron Throw Pillows (跳色点缀抱枕) nestled across the straight 3-seater
   const pillowGeoA = createPinchedPlumpPillowGeometry(0.42, 0.39, 0.165, 0.5);
   const pillowGeoB = createPinchedPlumpPillowGeometry(0.38, 0.36, 0.155, 2.1);
@@ -3657,9 +6466,10 @@ export function buildLivingRoom(
   toyGunWorld.rotation.set(0.05, 0.48, Math.PI / 2 - 0.12);
   toyGunWorld.scale.setScalar(1.08);
   toyGunWorld.userData.dynamic = true;
-  // Tight invisible hit-proxy right around the toy gun so center-dot targeting is instant and pinpoint accurate
+  // Comfortable invisible hit-proxy strictly on the north cushion around the toy gun (Z ≈ -6.66..-6.20),
+  // cleanly separated by >0.50m from the south/center sofa sit zone!
   const toyGunHitProxy = new THREE.Mesh(
-    new THREE.BoxGeometry(0.24, 0.28, 0.42),
+    new THREE.BoxGeometry(0.36, 0.34, 0.48),
     new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false })
   );
   toyGunHitProxy.position.set(0, 0.02, -0.04);
@@ -3703,10 +6513,10 @@ export function buildLivingRoom(
   sofaLegsInst.computeBoundingSphere();
   sofa.add(sofaLegsInst);
 
-  // Invisible sit hit-proxy covering ONLY the south/center cushions (world Z in [-5.815, -3.965]),
-  // leaving a clear ~0.40m gap before the toy gun at world Z = -6.42.
+  // Invisible sit hit-proxy covering ONLY the south/center cushions (world Z in [-5.705, -3.955]),
+  // leaving a wide >0.50m dead-zone gap before the toy gun at world Z = -6.42.
   const sofaSitProxy = new THREE.Mesh(
-    new THREE.BoxGeometry(1.85, 0.72, 0.94),
+    new THREE.BoxGeometry(1.75, 0.72, 0.94),
     new THREE.MeshBasicMaterial({
       transparent: true,
       opacity: 0,
@@ -3714,7 +6524,7 @@ export function buildLivingRoom(
       colorWrite: false,
     })
   );
-  sofaSitProxy.position.set(-0.36, 0.56, 0.02);
+  sofaSitProxy.position.set(-0.42, 0.56, 0.02);
   sofa.add(sofaSitProxy);
 
   group.add(sofa);
@@ -3791,78 +6601,451 @@ export function buildLivingRoom(
   etMagazine.rotation.y = 0.24;
   endTable.add(etMagazine);
 
-  // Macaron Mint-Lime Articulated Dome Desk Lamp on End Table
-  const greenLampMat = mat({ color: 0x8ee89e, roughness: 0.90, metalness: 0.0 });
-  const lampBase = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.085, 0.095, 0.024, 18),
-    greenLampMat
-  );
-  lampBase.position.set(-0.08, 0.606, -0.08);
-  lampBase.castShadow = true;
-  endTable.add(lampBase);
+  // 1A) Anime Cel-Shaded Vintage Ceramic Gourd & Pleated Linen Empire Table Lamp (动漫画风百褶布艺陶瓷台灯)
+  {
+    const lampGroup = new THREE.Group();
+    lampGroup.position.set(-0.08, 0.601, -0.08);
 
-  const lampArmPts = [
-    new THREE.Vector3(-0.08, 0.618, -0.08),
-    new THREE.Vector3(-0.12, 0.78, -0.10),
-    new THREE.Vector3(-0.02, 0.92, -0.02),
-  ];
-  const lampArm = new THREE.Mesh(
-    createTaperedCurveGeometry(lampArmPts, 0.011, 0.009, 14, 8),
-    handleBrassMat
-  );
-  lampArm.castShadow = true;
-  endTable.add(lampArm);
+    // Soft matte-satin anime celadon ceramic & warm stylized anime gold (柔和动漫画风低反光)
+    const lampCeramicMat = mat({
+      color: 0xa2ccb0,
+      roughness: 0.76,
+      metalness: 0.0,
+      celStrength: 0.66,
+      rimScale: 1.38,
+    });
+    const animeGoldMat = mat({
+      color: 0xe6c178,
+      roughness: 0.62,
+      metalness: 0.22,
+      celStrength: 0.62,
+      rimScale: 1.30,
+    });
+    // Stepped warm-gold pedestal foot
+    const footPts = [
+      new THREE.Vector2(0.0, 0.0),
+      new THREE.Vector2(0.068, 0.0),
+      new THREE.Vector2(0.066, 0.012),
+      new THREE.Vector2(0.056, 0.022),
+      new THREE.Vector2(0.048, 0.028),
+    ];
+    const lampFoot = new THREE.Mesh(new THREE.LatheGeometry(footPts, 24), animeGoldMat);
+    lampFoot.castShadow = true;
+    outlines.addOutline(lampFoot, 1.022);
+    lampGroup.add(lampFoot);
 
-  const lampDome = new THREE.Mesh(
-    new THREE.ConeGeometry(0.095, 0.11, 18, 1, true),
-    greenLampMat
-  );
-  lampDome.position.set(0.01, 0.89, 0.01);
-  lampDome.rotation.set(0.32, 0, -0.35);
-  lampDome.castShadow = true;
-  outlines.addOutline(lampDome, 1.03);
-  endTable.add(lampDome);
+    // Sculpted ceramic gourd vase body
+    const vasePts = [
+      new THREE.Vector2(0.046, 0.026),
+      new THREE.Vector2(0.066, 0.056),
+      new THREE.Vector2(0.076, 0.098),
+      new THREE.Vector2(0.068, 0.142),
+      new THREE.Vector2(0.042, 0.178),
+      new THREE.Vector2(0.026, 0.204),
+      new THREE.Vector2(0.030, 0.218),
+    ];
+    const lampVase = new THREE.Mesh(new THREE.LatheGeometry(vasePts, 28), lampCeramicMat);
+    lampVase.castShadow = true;
+    lampVase.receiveShadow = true;
+    outlines.addOutline(lampVase, 1.024);
+    lampGroup.add(lampVase);
 
-  const lampBulb = new THREE.Mesh(
-    new THREE.SphereGeometry(0.032, 10, 8),
-    new THREE.MeshBasicMaterial({ color: 0xfff8dc })
-  );
-  lampBulb.position.set(0.02, 0.86, 0.02);
-  endTable.add(lampBulb);
-
-  // Tabletop small ornaments on Sofa End Table: macaron sakura ceramic mug + pastel mint mini twin-bell alarm clock
-  const etCoaster = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.048, 0.050, 0.008, 16),
-    darkOakMat
-  );
-  etCoaster.position.set(-0.12, 0.598, 0.12);
-  endTable.add(etCoaster);
-
-  const etMug = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.036, 0.032, 0.076, 16),
-    mat({ color: 0xffb2cc, roughness: 0.90, metalness: 0.0 })
-  );
-  etMug.position.set(-0.12, 0.640, 0.12);
-  etMug.castShadow = true;
-  endTable.add(etMug);
-
-  const etClockBody = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.042, 0.042, 0.026, 18),
-    mat({ color: 0x9ee8cc, roughness: 0.90, metalness: 0.0 })
-  );
-  etClockBody.rotation.z = Math.PI / 2;
-  etClockBody.rotation.y = -0.36;
-  etClockBody.position.set(0.14, 0.638, -0.11);
-  etClockBody.castShadow = true;
-  endTable.add(etClockBody);
-
-  for (const bellS of [-1, 1]) {
-    const bell = new THREE.Mesh(
-      new THREE.SphereGeometry(0.016, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.6),
-      handleBrassMat
+    // Neck collar, socket stem & delicate pull-chain switch
+    const neckCollar = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.022, 0.030, 0.026, 18),
+      animeGoldMat
     );
-    bell.position.set(0.14 + bellS * 0.018, 0.682, -0.11 + bellS * 0.024);
-    endTable.add(bell);
+    neckCollar.position.y = 0.228;
+    lampGroup.add(neckCollar);
+
+    const socketStem = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.014, 0.016, 0.072, 14),
+      animeGoldMat
+    );
+    socketStem.position.y = 0.274;
+    lampGroup.add(socketStem);
+
+    // Delicate pull-chain hanging just under the pleated shade
+    const pullChain = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.0018, 0.0018, 0.078, 6),
+      animeGoldMat
+    );
+    pullChain.position.set(0.032, 0.226, 0.026);
+    lampGroup.add(pullChain);
+    const pullDrop = new THREE.Mesh(new THREE.SphereGeometry(0.0055, 8, 8), animeGoldMat);
+    pullDrop.position.set(0.032, 0.184, 0.026);
+    lampGroup.add(pullDrop);
+
+    // Warm-ivory pleated linen empire lampshade (24 crisp radial fabric pleats!)
+    const shadePts = [
+      new THREE.Vector2(0.142, 0.242),
+      new THREE.Vector2(0.130, 0.285),
+      new THREE.Vector2(0.114, 0.335),
+      new THREE.Vector2(0.096, 0.382),
+      new THREE.Vector2(0.080, 0.416),
+    ];
+    const pleatedShadeGeo = new THREE.LatheGeometry(shadePts, 72);
+    const sp = pleatedShadeGeo.attributes.position;
+    for (let i = 0; i < sp.count; i++) {
+      const vx = sp.getX(i);
+      const vz = sp.getZ(i);
+      const r = Math.hypot(vx, vz);
+      if (r > 0.01) {
+        const ang = Math.atan2(vz, vx);
+        const pleat = Math.cos(ang * 24) * 0.0046;
+        const sc = (r + pleat) / r;
+        sp.setX(i, vx * sc);
+        sp.setZ(i, vz * sc);
+      }
+    }
+    pleatedShadeGeo.computeVertexNormals();
+
+    const lampShadeMat = mat({
+      map: textures.plushFabric,
+      color: 0xfff6e6,
+      emissive: new THREE.Color(0xffe6bc),
+      emissiveIntensity: 0.22,
+      roughness: 0.92,
+      metalness: 0.0,
+      celStrength: 0.58,
+      side: THREE.DoubleSide,
+    });
+    const lampShade = new THREE.Mesh(pleatedShadeGeo, lampShadeMat);
+    lampShade.castShadow = true;
+    outlines.addOutline(lampShade, 1.022);
+    lampGroup.add(lampShade);
+
+    // Top & bottom warm-sage braided fabric trim piping rings
+    const pipingMat = mat({ color: 0x7fa286, roughness: 0.88, metalness: 0.0, celStrength: 0.62 });
+    const botTrim = new THREE.Mesh(new THREE.TorusGeometry(0.142, 0.0045, 8, 36), pipingMat);
+    botTrim.rotation.x = Math.PI / 2;
+    botTrim.position.y = 0.242;
+    lampGroup.add(botTrim);
+    const topTrim = new THREE.Mesh(new THREE.TorusGeometry(0.080, 0.004, 8, 32), pipingMat);
+    topTrim.rotation.x = Math.PI / 2;
+    topTrim.position.y = 0.416;
+    lampGroup.add(topTrim);
+
+    // Warm-white inner glowing bulb + brass spider & turned top finial
+    const lampBulb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.028, 12, 10),
+      new THREE.MeshBasicMaterial({ color: 0xfff6e4 })
+    );
+    lampBulb.position.y = 0.318;
+    lampGroup.add(lampBulb);
+
+    const finialPost = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.004, 0.006, 0.036, 10),
+      animeGoldMat
+    );
+    finialPost.position.y = 0.422;
+    lampGroup.add(finialPost);
+    const finialBall = new THREE.Mesh(new THREE.SphereGeometry(0.011, 10, 10), animeGoldMat);
+    finialBall.position.y = 0.442;
+    lampGroup.add(finialBall);
+
+    endTable.add(lampGroup);
+  }
+
+  // 1B) Anime Cel-Shaded Pastel Ceramic Coffee Mug with C-Handle, Latte Heart Art & Wood Coaster (动漫画风马克杯)
+  {
+    const mugGroup = new THREE.Group();
+    mugGroup.position.set(-0.12, 0.601, 0.13);
+    mugGroup.rotation.y = 0.68;
+
+    // Turned recessed walnut-oak coaster
+    const coasterPts = [
+      new THREE.Vector2(0.0, 0.0),
+      new THREE.Vector2(0.050, 0.0),
+      new THREE.Vector2(0.052, 0.008),
+      new THREE.Vector2(0.046, 0.009),
+      new THREE.Vector2(0.044, 0.005),
+      new THREE.Vector2(0.0, 0.005),
+    ];
+    const etCoaster = new THREE.Mesh(new THREE.LatheGeometry(coasterPts, 24), darkOakMat);
+    etCoaster.receiveShadow = true;
+    mugGroup.add(etCoaster);
+
+    // Soft pastel anime dipped-ceramic glaze texture
+    const mugTex = (() => {
+      const mc = document.createElement('canvas');
+      mc.width = 256;
+      mc.height = 128;
+      const mctx = mc.getContext('2d')!;
+      mctx.fillStyle = '#fff7f8';
+      mctx.fillRect(0, 0, 256, 128);
+      // Soft sakura-rose lower dipped glaze band + subtle warm gold stripe
+      const dip = mctx.createLinearGradient(0, 68, 0, 128);
+      dip.addColorStop(0.0, '#f8c4d4');
+      dip.addColorStop(1.0, '#efa5bc');
+      mctx.fillStyle = dip;
+      mctx.fillRect(0, 72, 256, 56);
+      mctx.fillStyle = '#e2be76';
+      mctx.fillRect(0, 6, 256, 5);
+      mctx.fillStyle = '#e2be76';
+      mctx.fillRect(0, 69, 256, 3);
+      const tex = new THREE.CanvasTexture(mc);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    })();
+    const mugCeramicMat = mat({
+      map: mugTex,
+      color: 0xffffff,
+      roughness: 0.74,
+      metalness: 0.0,
+      celStrength: 0.68,
+      rimScale: 1.38,
+    });
+    const mugInnerMat = mat({
+      color: 0xfffaf6,
+      roughness: 0.78,
+      metalness: 0.0,
+      celStrength: 0.64,
+    });
+
+    // Sculpted ceramic mug body with footed base & rolled lip
+    const mugOuterPts = [
+      new THREE.Vector2(0.0, 0.005),
+      new THREE.Vector2(0.031, 0.005),
+      new THREE.Vector2(0.034, 0.014),
+      new THREE.Vector2(0.039, 0.044),
+      new THREE.Vector2(0.040, 0.076),
+      new THREE.Vector2(0.041, 0.088),
+      new THREE.Vector2(0.037, 0.091),
+      new THREE.Vector2(0.034, 0.088),
+    ];
+    const mugOuter = new THREE.Mesh(new THREE.LatheGeometry(mugOuterPts, 28), mugCeramicMat);
+    mugOuter.castShadow = true;
+    mugOuter.receiveShadow = true;
+    outlines.addOutline(mugOuter, 1.028);
+    mugGroup.add(mugOuter);
+
+    const mugInnerPts = [
+      new THREE.Vector2(0.034, 0.088),
+      new THREE.Vector2(0.033, 0.054),
+      new THREE.Vector2(0.029, 0.016),
+      new THREE.Vector2(0.0, 0.014),
+    ];
+    const mugInner = new THREE.Mesh(new THREE.LatheGeometry(mugInnerPts, 24), mugInnerMat);
+    mugGroup.add(mugInner);
+
+    // Sculpted ergonomic C-curved ceramic handle with crisp anime outline
+    const handleCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0.038, 0.074, 0),
+      new THREE.Vector3(0.058, 0.072, 0),
+      new THREE.Vector3(0.064, 0.048, 0),
+      new THREE.Vector3(0.056, 0.026, 0),
+      new THREE.Vector3(0.035, 0.024, 0),
+    ]);
+    const mugHandle = new THREE.Mesh(
+      new THREE.TubeGeometry(handleCurve, 18, 0.0054, 10, false),
+      mugInnerMat
+    );
+    mugHandle.castShadow = true;
+    outlines.addOutline(mugHandle, 1.03);
+    mugGroup.add(mugHandle);
+
+    // Warm cappuccino coffee surface with cute cream foam heart latte art
+    const latteTex = (() => {
+      const lc = document.createElement('canvas');
+      lc.width = 128;
+      lc.height = 128;
+      const lctx = lc.getContext('2d')!;
+      const bg = lctx.createRadialGradient(64, 64, 8, 64, 64, 62);
+      bg.addColorStop(0.0, '#a46b44');
+      bg.addColorStop(0.75, '#865230');
+      bg.addColorStop(1.0, '#683b20');
+      lctx.fillStyle = bg;
+      lctx.fillRect(0, 0, 128, 128);
+      lctx.fillStyle = '#fff6e8';
+      lctx.beginPath();
+      lctx.moveTo(64, 86);
+      lctx.bezierCurveTo(34, 64, 34, 38, 52, 38);
+      lctx.bezierCurveTo(60, 38, 64, 46, 64, 50);
+      lctx.bezierCurveTo(64, 46, 68, 38, 76, 38);
+      lctx.bezierCurveTo(94, 38, 94, 64, 64, 86);
+      lctx.fill();
+      const tex = new THREE.CanvasTexture(lc);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    })();
+    const coffeeDisc = new THREE.Mesh(
+      new THREE.CircleGeometry(0.0335, 22),
+      mat({ map: latteTex, roughness: 0.78, metalness: 0.0, celStrength: 0.56 })
+    );
+    coffeeDisc.rotation.x = -Math.PI / 2;
+    coffeeDisc.position.y = 0.074;
+    mugGroup.add(coffeeDisc);
+
+    endTable.add(mugGroup);
+  }
+
+  // 1C) Anime Cel-Shaded Pastel Mint Twin-Bell Alarm Clock (动漫画风复古双铃闹钟)
+  {
+    const clockGroup = new THREE.Group();
+    clockGroup.position.set(0.14, 0.601, -0.11);
+    clockGroup.rotation.y = -0.52;
+
+    const clockEnamelMat = mat({
+      color: 0x97dec5,
+      roughness: 0.72,
+      metalness: 0.04,
+      celStrength: 0.68,
+      rimScale: 1.38,
+    });
+    const clockGoldMat = mat({
+      color: 0xe8c47a,
+      roughness: 0.58,
+      metalness: 0.24,
+      celStrength: 0.62,
+      rimScale: 1.30,
+    });
+
+    // Twin angled brass ball feet resting cleanly at Y = 0
+    for (const fx of [-0.028, 0.028]) {
+      const footStem = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.004, 0.004, 0.016, 8),
+        clockGoldMat
+      );
+      footStem.position.set(fx, 0.012, 0);
+      footStem.rotation.z = fx < 0 ? 0.34 : -0.34;
+      clockGroup.add(footStem);
+      const footBall = new THREE.Mesh(new THREE.SphereGeometry(0.0068, 10, 8), clockGoldMat);
+      footBall.position.set(fx * 1.12, 0.0068, 0);
+      clockGroup.add(footBall);
+    }
+
+    // Round pastel-mint drum casing (center at Y = 0.056, radius = 0.046)
+    const clockDrum = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.046, 0.046, 0.034, 28),
+      clockEnamelMat
+    );
+    clockDrum.rotation.x = Math.PI / 2;
+    clockDrum.position.set(0, 0.056, 0);
+    clockDrum.castShadow = true;
+    outlines.addOutline(clockDrum, 1.028);
+    clockGroup.add(clockDrum);
+
+    // Warm stylized gold front bezel ring
+    const clockBezel = new THREE.Mesh(
+      new THREE.TorusGeometry(0.045, 0.0046, 10, 32),
+      clockGoldMat
+    );
+    clockBezel.position.set(0, 0.056, 0.017);
+    clockGroup.add(clockBezel);
+
+    // Crisp 256x256 printed anime analog dial face
+    const dialTex = (() => {
+      const dc = document.createElement('canvas');
+      dc.width = 256;
+      dc.height = 256;
+      const dctx = dc.getContext('2d')!;
+      dctx.fillStyle = '#fffcf4';
+      dctx.fillRect(0, 0, 256, 256);
+      dctx.strokeStyle = '#4a403a';
+      dctx.lineWidth = 4;
+      dctx.beginPath();
+      dctx.arc(128, 128, 114, 0, Math.PI * 2);
+      dctx.stroke();
+
+      // Minute & hour tick marks
+      for (let t = 0; t < 60; t++) {
+        const a = (t / 60) * Math.PI * 2 - Math.PI / 2;
+        const isHour = t % 5 === 0;
+        const r1 = isHour ? 96 : 104;
+        const r2 = 112;
+        dctx.strokeStyle = isHour ? '#3a322e' : '#8e847c';
+        dctx.lineWidth = isHour ? 4.4 : 1.8;
+        dctx.beginPath();
+        dctx.moveTo(128 + Math.cos(a) * r1, 128 + Math.sin(a) * r1);
+        dctx.lineTo(128 + Math.cos(a) * r2, 128 + Math.sin(a) * r2);
+        dctx.stroke();
+      }
+      // Crisp Arabic numerals 1..12
+      dctx.fillStyle = '#3a322e';
+      dctx.font = 'bold 26px "M PLUS Rounded 1c", sans-serif';
+      dctx.textAlign = 'center';
+      dctx.textBaseline = 'middle';
+      for (let h = 1; h <= 12; h++) {
+        const a = (h / 12) * Math.PI * 2 - Math.PI / 2;
+        dctx.fillText(String(h), 128 + Math.cos(a) * 76, 128 + Math.sin(a) * 78);
+      }
+      const tex = new THREE.CanvasTexture(dc);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    })();
+    const dialFace = new THREE.Mesh(
+      new THREE.CircleGeometry(0.042, 28),
+      mat({ map: dialTex, roughness: 0.88, metalness: 0.0, celStrength: 0.45 })
+    );
+    dialFace.position.set(0, 0.056, 0.0176);
+    clockGroup.add(dialFace);
+
+    // 3D Hour, Minute & Coral-Red Second Hands + Gold Center Pin
+    const handDarkMat = mat({ color: 0x383238, roughness: 0.72, metalness: 0.08, celStrength: 0.60 });
+    const hourHand = new THREE.Mesh(new THREE.BoxGeometry(0.0038, 0.022, 0.0018), handDarkMat);
+    hourHand.position.set(-0.006, 0.062, 0.0195);
+    hourHand.rotation.z = 0.65;
+    clockGroup.add(hourHand);
+
+    const minHand = new THREE.Mesh(new THREE.BoxGeometry(0.0030, 0.032, 0.0018), handDarkMat);
+    minHand.position.set(0.008, 0.066, 0.0202);
+    minHand.rotation.z = -0.58;
+    clockGroup.add(minHand);
+
+    const secHand = new THREE.Mesh(
+      new THREE.BoxGeometry(0.0016, 0.034, 0.0014),
+      mat({ color: 0xe25858, roughness: 0.72, metalness: 0.0, celStrength: 0.58 })
+    );
+    secHand.position.set(-0.004, 0.046, 0.0208);
+    secHand.rotation.z = 2.45;
+    clockGroup.add(secHand);
+
+    const centerPin = new THREE.Mesh(new THREE.SphereGeometry(0.0034, 8, 8), clockGoldMat);
+    centerPin.position.set(0, 0.056, 0.0212);
+    clockGroup.add(centerPin);
+
+    // Twin stylized anime gold bells on slender stems + center hammer + top arched carrying loop
+    for (const bs of [-1, 1]) {
+      const ang = bs * 0.64;
+      const bellPost = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.0024, 0.0024, 0.018, 8),
+        clockGoldMat
+      );
+      bellPost.position.set(Math.sin(ang) * 0.049, 0.056 + Math.cos(ang) * 0.049, 0);
+      bellPost.rotation.z = -ang;
+      clockGroup.add(bellPost);
+
+      const bell = new THREE.Mesh(
+        new THREE.SphereGeometry(0.0175, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.56),
+        clockGoldMat
+      );
+      bell.position.set(Math.sin(ang) * 0.050, 0.056 + Math.cos(ang) * 0.050, 0);
+      bell.rotation.z = -ang;
+      bell.castShadow = true;
+      outlines.addOutline(bell, 1.032);
+      clockGroup.add(bell);
+    }
+
+    // Center hammer & arched top carrying handle
+    const hammerStem = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.0020, 0.0020, 0.018, 6),
+      clockGoldMat
+    );
+    hammerStem.position.set(0, 0.109, 0);
+    clockGroup.add(hammerStem);
+    const hammerHead = new THREE.Mesh(new THREE.SphereGeometry(0.0046, 8, 8), clockGoldMat);
+    hammerHead.position.set(0, 0.119, 0);
+    clockGroup.add(hammerHead);
+
+    const topLoop = new THREE.Mesh(
+      new THREE.TorusGeometry(0.018, 0.0024, 8, 20, Math.PI),
+      clockGoldMat
+    );
+    topLoop.position.set(0, 0.102, 0);
+    clockGroup.add(topLoop);
+
+    endTable.add(clockGroup);
   }
 
   group.add(endTable);
@@ -4096,6 +7279,172 @@ export function buildLivingRoom(
   acTempDot.position.set(0.475, -0.035, 0.162);
   acUnit.add(acTempDot);
 
+  // Cute decorative front-panel decals / stickers on the AC unit (空调表面精致小贴花)
+  {
+    const dc = document.createElement('canvas');
+    dc.width = 1024;
+    dc.height = 256;
+    const dctx = dc.getContext('2d')!;
+    dctx.clearRect(0, 0, 1024, 256);
+
+    // 1) Left corner: delicate watercolor botanical olive/eucalyptus vine + tiny pastel wildflowers
+    dctx.save();
+    dctx.translate(150, 146);
+    dctx.strokeStyle = '#6c9a68';
+    dctx.lineWidth = 4.2;
+    dctx.lineCap = 'round';
+    dctx.beginPath();
+    dctx.moveTo(-88, 30);
+    dctx.bezierCurveTo(-30, 8, 36, -12, 92, -32);
+    dctx.stroke();
+
+    const acLeaves: [number, number, number, number, string][] = [
+      [-58, 12, -0.65, 19, '#7eb078'],
+      [-28, 22, 0.52, 18, '#8dc086'],
+      [-2, -6, -0.58, 21, '#6fa06a'],
+      [28, 6, 0.48, 19, '#88b982'],
+      [56, -24, -0.52, 18, '#77aa72'],
+      [82, -16, 0.32, 15, '#92c58b'],
+    ];
+    for (const [lx, ly, rot, rad, col] of acLeaves) {
+      dctx.save();
+      dctx.translate(lx, ly);
+      dctx.rotate(rot);
+      dctx.fillStyle = col;
+      dctx.beginPath();
+      dctx.ellipse(0, 0, rad, rad * 0.44, 0, 0, Math.PI * 2);
+      dctx.fill();
+      dctx.restore();
+    }
+    // Tiny cream-pink & butter-yellow five-petal blossoms
+    const drawMiniBlossom = (bx: number, by: number, pr: number, petalCol: string) => {
+      dctx.fillStyle = petalCol;
+      for (let p = 0; p < 5; p++) {
+        const a = (p / 5) * Math.PI * 2;
+        dctx.beginPath();
+        dctx.arc(bx + Math.cos(a) * pr * 0.85, by + Math.sin(a) * pr * 0.85, pr * 0.62, 0, Math.PI * 2);
+        dctx.fill();
+      }
+      dctx.fillStyle = '#f8d86c';
+      dctx.beginPath();
+      dctx.arc(bx, by, pr * 0.45, 0, Math.PI * 2);
+      dctx.fill();
+    };
+    drawMiniBlossom(-38, -14, 10, '#f5a9bc');
+    drawMiniBlossom(16, -28, 8.5, '#ffd884');
+    drawMiniBlossom(64, 12, 9, '#f29eb4');
+    dctx.restore();
+
+    // 2) Center-left: cozy minimalist sleeping kitten & fluffy pastel cloud sticker
+    dctx.save();
+    dctx.translate(468, 134);
+    // Soft sky-blue cloud cushion
+    dctx.fillStyle = 'rgba(182, 218, 246, 0.82)';
+    for (const [cx, cy, r] of [
+      [-36, 16, 20],
+      [-10, 12, 24],
+      [20, 14, 22],
+      [44, 18, 18],
+    ]) {
+      dctx.beginPath();
+      dctx.arc(cx, cy, r, 0, Math.PI * 2);
+      dctx.fill();
+    }
+    // Curled cream-ginger sleeping cat silhouette
+    dctx.fillStyle = '#f6d4a8';
+    dctx.beginPath();
+    dctx.ellipse(4, 2, 34, 22, 0, 0, Math.PI * 2);
+    dctx.fill();
+    // Cat head & pointy ears
+    dctx.beginPath();
+    dctx.arc(-20, -6, 18, 0, Math.PI * 2);
+    dctx.fill();
+    dctx.beginPath();
+    dctx.moveTo(-34, -14);
+    dctx.lineTo(-32, -30);
+    dctx.lineTo(-20, -20);
+    dctx.moveTo(-16, -21);
+    dctx.lineTo(-8, -31);
+    dctx.lineTo(-4, -15);
+    dctx.fill();
+    // Closed happy sleeping eyes & rosy cheeks
+    dctx.strokeStyle = '#5a4236';
+    dctx.lineWidth = 2.6;
+    dctx.beginPath();
+    dctx.arc(-26, -6, 4.2, 0.15 * Math.PI, 0.85 * Math.PI);
+    dctx.stroke();
+    dctx.beginPath();
+    dctx.arc(-13, -6, 4.2, 0.15 * Math.PI, 0.85 * Math.PI);
+    dctx.stroke();
+    dctx.fillStyle = 'rgba(244, 146, 164, 0.65)';
+    dctx.beginPath();
+    dctx.arc(-31, -1, 3.6, 0, Math.PI * 2);
+    dctx.arc(-9, -1, 3.6, 0, Math.PI * 2);
+    dctx.fill();
+    // Soft ginger tabby forehead stripes & tail curl
+    dctx.strokeStyle = '#d9985a';
+    dctx.lineWidth = 3.2;
+    dctx.beginPath();
+    dctx.arc(34, 4, 14, -0.5 * Math.PI, 0.7 * Math.PI);
+    dctx.stroke();
+    dctx.restore();
+
+    // 3) Scattered tiny golden stars, pastel sparkles & a four-leaf clover on right-center
+    const drawStar = (sx: number, sy: number, r: number, col: string) => {
+      dctx.fillStyle = col;
+      dctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        const rad = i % 2 === 0 ? r : r * 0.36;
+        const x = sx + Math.cos(a) * rad;
+        const y = sy + Math.sin(a) * rad;
+        if (i === 0) dctx.moveTo(x, y);
+        else dctx.lineTo(x, y);
+      }
+      dctx.closePath();
+      dctx.fill();
+    };
+    drawStar(330, 82, 13, '#f7d16c');
+    drawStar(362, 112, 8, '#f6a8be');
+    drawStar(586, 78, 12, '#f7d16c');
+    drawStar(620, 108, 9, '#9fd0f2');
+    // Tiny four-leaf clover sticker near right-center (well clear of LED panel)
+    dctx.save();
+    dctx.translate(765, 136);
+    dctx.fillStyle = '#7bb474';
+    for (let k = 0; k < 4; k++) {
+      const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
+      dctx.beginPath();
+      dctx.arc(Math.cos(a) * 12, Math.sin(a) * 12, 11, 0, Math.PI * 2);
+      dctx.fill();
+    }
+    dctx.strokeStyle = '#5f9458';
+    dctx.lineWidth = 3.2;
+    dctx.beginPath();
+    dctx.moveTo(0, 10);
+    dctx.quadraticCurveTo(4, 28, 14, 34);
+    dctx.stroke();
+    drawMiniBlossom(42, -16, 7.5, '#f6a8bc');
+    drawStar(-42, -18, 9.5, '#f7d16c');
+    dctx.restore();
+
+    const acDecalTex = new THREE.CanvasTexture(dc);
+    acDecalTex.colorSpace = THREE.SRGBColorSpace;
+    acDecalTex.anisotropy = 4;
+    const acDecalMat = new THREE.MeshStandardMaterial({
+      map: acDecalTex,
+      transparent: true,
+      roughness: 0.34,
+      metalness: 0.02,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+    });
+    const acDecalPlane = new THREE.Mesh(new THREE.PlaneGeometry(1.06, 0.265), acDecalMat);
+    acDecalPlane.position.set(-0.12, 0.028, 0.1568);
+    acUnit.add(acDecalPlane);
+  }
+
   // Deep dark bottom air-discharge cavity & tilted motorized louver deflector blade
   const acOutletCavity = new THREE.Mesh(
     createBeveledBox(1.36, 0.062, 0.105, 0.008, 1),
@@ -4236,13 +7585,13 @@ export function buildLivingRoom(
     matBoard.position.z = 0.004;
     fg.add(matBoard);
 
-    // Non-emissive matte archival canvas art material tinted to blend seamlessly into the living room wall
+    // Wall-harmonized matte archival canvas art material matching the airy living room wall luminance
     const artMat = mat({
       map: artTex,
-      color: 0xe6dcd4,
-      roughness: 0.93,
+      color: 0xf7f2ed,
+      roughness: 0.90,
       metalness: 0.0,
-      celStrength: 0.44,
+      celStrength: 0.34,
     });
     const art = new THREE.Mesh(
       new THREE.PlaneGeometry(w - 0.13, h - 0.13),
@@ -4251,188 +7600,979 @@ export function buildLivingRoom(
     art.position.z = 0.032;
     fg.add(art);
 
+    // Delicate Evergreen Vine & Crimson Satin Ribbon Accent along Frame Edge (画框边缘细绿藤蔓与红丝带)
+    const vineMat = mat({ color: 0x2f7d4a, roughness: 0.72, celStrength: 0.52 });
+    const leafMat = mat({ color: 0x459a5d, roughness: 0.70, celStrength: 0.54 });
+    const ribbonRedMat = mat({ color: 0xd62d3e, roughness: 0.42, metalness: 0.08, rimScale: 1.3 });
+
+    const hw = w * 0.5;
+    const hh = h * 0.5;
+    const vinePts: THREE.Vector3[] = [];
+    // Wind gracefully across top edge of frame and cascade slightly down one side
+    for (let i = 0; i <= 10; i++) {
+      const t = i / 10;
+      const vx = THREE.MathUtils.lerp(-hw + 0.02, hw + 0.005, t);
+      const vy = hh + 0.004 + Math.sin(t * Math.PI * 3.5) * 0.012;
+      const vz = 0.024 + Math.cos(t * Math.PI * 3.5) * 0.005;
+      vinePts.push(new THREE.Vector3(vx, vy, vz));
+    }
+    for (let i = 1; i <= 5; i++) {
+      const t = i / 5;
+      const vx = hw + 0.005 + Math.sin(t * Math.PI * 2.0) * 0.008;
+      const vy = THREE.MathUtils.lerp(hh, hh - h * 0.45, t);
+      const vz = 0.024 + Math.cos(t * Math.PI * 2.0) * 0.004;
+      vinePts.push(new THREE.Vector3(vx, vy, vz));
+    }
+    const vineStem = new THREE.Mesh(
+      createTaperedCurveGeometry(vinePts, 0.0045, 0.003, 28, 6),
+      vineMat
+    );
+    fg.add(vineStem);
+
+    // Petite paired evergreen leaves tucked along the frame vine
+    const tinyLeafGeo = new THREE.SphereGeometry(0.014, 7, 5);
+    tinyLeafGeo.scale(1.45, 0.62, 0.28);
+    for (let i = 1; i < vinePts.length - 1; i += 2) {
+      const pt = vinePts[i];
+      for (const ls of [-1, 1]) {
+        const lf = new THREE.Mesh(tinyLeafGeo, leafMat);
+        lf.position.set(pt.x + ls * 0.009, pt.y + (i < 10 ? ls * 0.007 : 0), pt.z + 0.004);
+        lf.rotation.set(0.15, 0, ls * 0.65 + (i >= 10 ? Math.PI * 0.5 : 0));
+        fg.add(lf);
+      }
+    }
+
+    // Petite Crimson Satin Ribbon Bow perched at the upper-right corner of the frame
+    const bowCornerX = hw - 0.012;
+    const bowCornerY = hh - 0.008;
+    const bowKnot = new THREE.Mesh(new THREE.SphereGeometry(0.011, 8, 6), ribbonRedMat);
+    bowKnot.position.set(bowCornerX, bowCornerY, 0.032);
+    fg.add(bowKnot);
+
+    for (const bs of [-1, 1]) {
+      const loop = new THREE.Mesh(
+        new THREE.TorusGeometry(0.018, 0.0055, 6, 14),
+        ribbonRedMat
+      );
+      loop.scale.set(1.3, 0.68, 0.5);
+      loop.rotation.z = bs * 0.45 - 0.35;
+      loop.position.set(bowCornerX + bs * 0.018, bowCornerY + 0.006, 0.033);
+      fg.add(loop);
+
+      const tail = new THREE.Mesh(new THREE.BoxGeometry(0.010, 0.072, 0.003), ribbonRedMat);
+      tail.rotation.z = bs * 0.24;
+      tail.position.set(bowCornerX + bs * 0.012, bowCornerY - 0.038, 0.031);
+      fg.add(tail);
+    }
+
     galleryGroup.add(fg);
   };
 
   const artworks = textures.sofaArtworks;
-  buildEclecticArtFrame(1.75, 2.08, -10.29, 0.88, 0.64, 0.022, 0x4a3531, artworks[0], 0.016);
-  buildEclecticArtFrame(2.82, 1.90, -10.29, 0.64, 0.84, -0.024, 0x9b7e5c, artworks[1], 0.020);
-  buildEclecticArtFrame(3.66, 2.26, -10.29, 0.54, 0.70, 0.028, 0x625a66, artworks[2], 0.022);
-  buildEclecticArtFrame(3.78, 1.50, -10.29, 0.52, 0.38, -0.020, 0x2e2636, artworks[3], 0.015);
+  buildEclecticArtFrame(1.75, 2.08, -10.29, 0.88, 0.64, 0.022, 0x7a5c50, artworks[0], 0.016);
+  buildEclecticArtFrame(2.82, 1.90, -10.29, 0.64, 0.84, -0.024, 0xb89674, artworks[1], 0.020);
+  buildEclecticArtFrame(3.66, 2.26, -10.29, 0.54, 0.70, 0.028, 0x8a808d, artworks[2], 0.022);
+  buildEclecticArtFrame(3.78, 1.50, -10.29, 0.52, 0.38, -0.020, 0x625668, artworks[3], 0.015);
 
   // =========================================================================
-  // 10. LUSH BROAD-LEAF POTTED PLANT WITH INSTANCED FOLIAGE (X = 6.74, Z = -9.66, clear of Bathroom doorway)
+  // 10. NATURAL IRREGULAR PINE-NEEDLE GLOWING CHRISTMAS TREE (X = 6.74, Z = -9.66)
+  //     (精细自然不对称发光圣诞树：清晰可见的羽毛状松针枝叶 + 松果 + 垂弧珠链 + 彩球 + 暖光灯串 + 发光金星)
   // =========================================================================
-  const plant = new THREE.Group();
-  const plantOrigin = new THREE.Vector3(6.74, 0, -9.66);
-  plant.position.copy(plantOrigin);
+  const xmasTree = new THREE.Group();
+  xmasTree.name = 'LivingRoomChristmasTree';
+  const treeOrigin = new THREE.Vector3(6.74, 0, -9.66);
+  xmasTree.position.copy(treeOrigin);
 
-  const potPts = [
-    new THREE.Vector2(0, 0),
-    new THREE.Vector2(0.16, 0),
-    new THREE.Vector2(0.22, 0.34),
-    new THREE.Vector2(0.24, 0.38),
-    new THREE.Vector2(0.22, 0.40),
-    new THREE.Vector2(0.19, 0.37),
-  ];
-  const pot = new THREE.Mesh(new THREE.LatheGeometry(potPts, 22), ceramicMat);
-  pot.position.y = 0.02;
-  pot.castShadow = true;
-  pot.receiveShadow = true;
-  outlines.addOutline(pot, 1.03);
-  plant.add(pot);
-
-  const saucer = new THREE.Mesh(
-    createBeveledSlab(0.38, 0.026, 0.38, 0.18, 0.008),
-    oakMat
+  // 1) Festive Red & Evergreen Scalloped Velvet Tree Skirt + Oak Barrel Base
+  const treeSkirtRedMat = mat({
+    color: 0xc22032,
+    roughness: 0.86,
+    metalness: 0.0,
+    rimScale: 1.35,
+  });
+  const treeGoldTrimMat = mat({
+    color: 0xefc968,
+    roughness: 0.26,
+    metalness: 0.74,
+  });
+  const treeSkirt = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.53, 0.57, 0.016, 32),
+    treeSkirtRedMat
   );
-  saucer.position.y = 0.012;
-  plant.add(saucer);
+  treeSkirt.position.y = 0.008;
+  treeSkirt.receiveShadow = true;
+  xmasTree.add(treeSkirt);
 
-  // Rich mounded organic potting soil with scattered bark nuggets & mineral pebbles
-  const soil = new THREE.Mesh(
-    new THREE.SphereGeometry(0.20, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.5),
-    pottingSoilMat
+  const skirtGoldRim = new THREE.Mesh(
+    new THREE.TorusGeometry(0.55, 0.010, 8, 36),
+    treeGoldTrimMat
   );
-  soil.scale.set(1.0, 0.28, 1.0);
-  soil.position.y = 0.345;
-  soil.receiveShadow = true;
-  plant.add(soil);
+  skirtGoldRim.rotation.x = Math.PI / 2;
+  skirtGoldRim.position.y = 0.015;
+  xmasTree.add(skirtGoldRim);
 
-  const barkChipMat = mat({ color: 0x5e3c28, roughness: 0.92, metalness: 0.0 });
-  const pebbleMat = mat({ color: 0xc8bba8, roughness: 0.86, metalness: 0.0 });
-  for (let b = 0; b < 14; b++) {
-    const ba = (b / 14) * Math.PI * 2 + 0.3;
-    const br = 0.055 + ((b * 37) % 12) * 0.010;
-    const isPebble = b % 4 === 0;
-    const chip = new THREE.Mesh(
-      isPebble
-        ? new THREE.DodecahedronGeometry(0.010 + (b % 2) * 0.004, 0)
-        : new THREE.BoxGeometry(0.022, 0.008, 0.014),
-      isPebble ? pebbleMat : barkChipMat
+  const barrelMat = mat({
+    map: textures.furnitureOak,
+    color: 0xb8764a,
+    roughness: 0.62,
+    metalness: 0.0,
+  });
+  const barrel = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.18, 0.142, 0.27, 20),
+    barrelMat
+  );
+  barrel.position.y = 0.145;
+  barrel.castShadow = true;
+  barrel.receiveShadow = true;
+  outlines.addOutline(barrel, 1.03);
+  xmasTree.add(barrel);
+
+  for (const hy of [0.075, 0.225]) {
+    const hoop = new THREE.Mesh(
+      new THREE.TorusGeometry(hy < 0.15 ? 0.154 : 0.178, 0.008, 8, 24),
+      treeGoldTrimMat
     );
-    chip.position.set(
-      Math.cos(ba) * br,
-      0.382 + (1 - br / 0.20) * 0.018,
-      Math.sin(ba) * br
-    );
-    chip.rotation.set(b * 0.4, b * 0.9, b * 0.25);
-    plant.add(chip);
+    hoop.rotation.x = Math.PI / 2;
+    hoop.position.y = hy;
+    xmasTree.add(hoop);
   }
 
-  const stemConfigs: THREE.Vector3[][] = [
-    [
-      new THREE.Vector3(0, 0.36, 0),
-      new THREE.Vector3(-0.03, 0.72, 0.02),
-      new THREE.Vector3(0.02, 1.12, -0.02),
-      new THREE.Vector3(-0.01, 1.44, 0.01),
-    ],
-    [
-      new THREE.Vector3(-0.04, 0.36, 0.03),
-      new THREE.Vector3(-0.09, 0.68, 0.07),
-      new THREE.Vector3(-0.12, 1.02, 0.09),
-    ],
-    [
-      new THREE.Vector3(0.04, 0.36, -0.03),
-      new THREE.Vector3(0.08, 0.64, -0.06),
-      new THREE.Vector3(0.11, 0.94, -0.08),
-    ],
+  // 2) Anime Hand-Painted Scaly Pine-Bark Trunk (动漫手绘风格暖红棕松树皮树干)
+  const pineBarkTextures = (() => {
+    const W = 256;
+    const H = 512;
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const ctx2d = c.getContext('2d')!;
+    const bc = document.createElement('canvas');
+    bc.width = W;
+    bc.height = H;
+    const bctx = bc.getContext('2d')!;
+
+    // Warm dark cocoa anime lineart crevice base
+    ctx2d.fillStyle = '#3d2215';
+    ctx2d.fillRect(0, 0, W, H);
+    bctx.fillStyle = '#383838';
+    bctx.fillRect(0, 0, W, H);
+
+    // Stylized rounded Ghibli/Anime pine bark scales with clean cel-shaded highlight & shadow blocks
+    const cols = 6;
+    const rows = 11;
+    const cw = W / cols;
+    const ch = H / rows;
+    for (let ry = -1; ry <= rows; ry++) {
+      for (let rx = -1; rx <= cols; rx++) {
+        const seed = ((rx + 7) * 41 + (ry + 11) * 73) >>> 0;
+        const px = (rx + (ry % 2) * 0.48) * cw + (((seed * 13) % 9) - 4);
+        const py = ry * ch + (((seed * 19) % 11) - 5);
+        const pw = cw * (0.82 + (seed % 4) * 0.04);
+        const ph = ch * (0.86 + ((seed >> 2) % 4) * 0.04);
+
+        const plateTones = ['#7d4c31', '#8e5a3b', '#9c6646', '#6e4129'];
+        ctx2d.fillStyle = plateTones[seed % plateTones.length];
+        bctx.fillStyle = `rgb(${175 + (seed % 45)}, ${175 + (seed % 45)}, ${175 + (seed % 45)})`;
+
+        // Smooth rounded hexagonal bark scale
+        const drawAnimeScale = (targetCtx: CanvasRenderingContext2D, inset = 0) => {
+          const w2 = Math.max(3, pw * 0.5 - inset);
+          const h2 = Math.max(3, ph * 0.5 - inset);
+          targetCtx.beginPath();
+          targetCtx.moveTo(px, py - h2);
+          targetCtx.quadraticCurveTo(px + w2, py - h2 * 0.65, px + w2, py);
+          targetCtx.quadraticCurveTo(px + w2, py + h2 * 0.65, px, py + h2);
+          targetCtx.quadraticCurveTo(px - w2, py + h2 * 0.65, px - w2, py);
+          targetCtx.quadraticCurveTo(px - w2, py - h2 * 0.65, px, py - h2);
+          targetCtx.closePath();
+        };
+
+        drawAnimeScale(ctx2d, 2.2);
+        ctx2d.fill();
+
+        // Clean anime top-left warm cel highlight crescent on each bark scale
+        ctx2d.strokeStyle = 'rgba(222, 162, 118, 0.55)';
+        ctx2d.lineWidth = 2.6;
+        ctx2d.beginPath();
+        ctx2d.arc(px, py, Math.max(4, pw * 0.36), Math.PI * 0.95, Math.PI * 1.85);
+        ctx2d.stroke();
+
+        drawAnimeScale(bctx, 2.4);
+        bctx.fill();
+      }
+    }
+
+    const map = new THREE.CanvasTexture(c);
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.wrapS = THREE.RepeatWrapping;
+    map.wrapT = THREE.RepeatWrapping;
+    map.repeat.set(2, 4);
+    map.anisotropy = 4;
+
+    const bumpMap = new THREE.CanvasTexture(bc);
+    bumpMap.wrapS = THREE.RepeatWrapping;
+    bumpMap.wrapT = THREE.RepeatWrapping;
+    bumpMap.repeat.set(2, 4);
+    bumpMap.anisotropy = 4;
+
+    return { map, bumpMap };
+  })();
+
+  const trunkMat = mat({
+    map: pineBarkTextures.map,
+    bumpMap: pineBarkTextures.bumpMap,
+    bumpScale: 0.018,
+    color: 0xffffff,
+    roughness: 0.84,
+    metalness: 0.0,
+    celStrength: 0.56,
+  });
+  const trunkCurvePts = [
+    new THREE.Vector3(0, 0.18, 0),
+    new THREE.Vector3(-0.015, 0.66, 0.012),
+    new THREE.Vector3(0.012, 1.16, -0.010),
+    new THREE.Vector3(-0.006, 1.60, 0.008),
+    new THREE.Vector3(0.002, 1.88, 0),
   ];
-  for (const sPts of stemConfigs) {
-    const sMesh = new THREE.Mesh(
-      createTaperedCurveGeometry(sPts, 0.028, 0.012, 18, 8),
-      plantStemMat
+  const trunkGeo = createTaperedCurveGeometry(trunkCurvePts, 0.056, 0.014, 28, 12);
+  const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+  trunk.castShadow = true;
+  trunk.receiveShadow = true;
+  outlines.addOutline(trunk, 1.04);
+  xmasTree.add(trunk);
+
+  // Stylized pruned pine branch-collar stubs along the visible lower/mid trunk
+  for (let s = 0; s < 8; s++) {
+    const sy = 0.28 + s * 0.13;
+    const sang = s * 2.25 + 0.4;
+    const sr = THREE.MathUtils.lerp(0.046, 0.026, s / 8);
+    const stub = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.009, 0.015, 0.042, 8),
+      trunkMat
     );
-    sMesh.castShadow = true;
-    plant.add(sMesh);
+    stub.position.set(Math.cos(sang) * sr, sy, Math.sin(sang) * sr);
+    stub.rotation.order = 'YXZ';
+    stub.rotation.y = -sang + Math.PI / 2;
+    stub.rotation.x = 1.15;
+    xmasTree.add(stub);
   }
 
-  // InstancedMesh for 13 Arching Broad Leaves (7 Light-Green + 6 Dark-Green)
-  const broadLeafBaseGeo = createBroadLeafGeometry(0.52, 0.27, 0.28, 0.16);
-  const leafPlacements: {
-    stemBase: [number, number, number];
-    leafBase: [number, number, number];
+  // 3) 2-Level Anime Conifer Pine-Frond Texture (512x512):
+  //    NO broadleaf stems or leaf midribs! Each shoot merges tiny needles into a clean,
+  //    serrated spiky-tipped anime conifer needle-cluster pad (锯齿松针簇单片，无叶茎叶脉！)
+  const pineNeedleSprayTex = (() => {
+    const S = 512;
+    const c = document.createElement('canvas');
+    c.width = S;
+    c.height = S;
+    const pctx = c.getContext('2d')!;
+    pctx.clearRect(0, 0, S, S);
+    pctx.lineCap = 'round';
+    pctx.lineJoin = 'round';
+
+    // Draws one merged conifer pine-tuft shoot from (x0, y0) to (x1, y1):
+    // Slender evergreen silhouette with forward-swept serrated pine-needle teeth & 3-Point tuft tip,
+    // ZERO broadleaf belly, ZERO central vein, ZERO exposed brown twig!
+    const drawConiferTuftPad = (
+      x0: number,
+      y0: number,
+      x1: number,
+      y1: number,
+      halfWid: number,
+      teethCount: number,
+      brightVariant = false
+    ) => {
+      const dx = x1 - x0;
+      const dy = y1 - y0;
+      const len = Math.hypot(dx, dy);
+      const ang = Math.atan2(dy, dx);
+
+      pctx.save();
+      pctx.translate(x0, y0);
+      pctx.rotate(ang);
+
+      const traceSerratedConiferPad = () => {
+        pctx.beginPath();
+        pctx.moveTo(0, -halfWid * 0.38);
+        // Upper serrated pine-needle teeth sweeping forward toward +X
+        for (let k = 0; k < teethCount; k++) {
+          const t0 = k / teethCount;
+          const tTip = (k + 0.86) / teethCount;
+          const tNotch = (k + 0.94) / teethCount;
+          const env = Math.sin(Math.min(1, t0 * 1.15 + 0.20) * Math.PI * 0.78);
+          const outerY = -halfWid * (0.55 + 0.52 * env);
+          const notchY = -halfWid * (0.30 + 0.32 * env);
+          pctx.quadraticCurveTo(len * (t0 + 0.42 / teethCount), outerY * 0.92, len * Math.min(0.96, tTip), outerY);
+          if (k < teethCount - 1) {
+            pctx.lineTo(len * tNotch, notchY);
+          }
+        }
+        // Crisp 3-needle terminal conifer tuft point at x = len
+        pctx.lineTo(len * 0.95, -halfWid * 0.28);
+        pctx.lineTo(len, 0);
+        pctx.lineTo(len * 0.95, halfWid * 0.28);
+
+        // Lower serrated pine-needle teeth returning to base
+        for (let k = teethCount - 1; k >= 0; k--) {
+          const t0 = k / teethCount;
+          const tTip = (k + 0.86) / teethCount;
+          const tNotch = (k + 0.94) / teethCount;
+          const env = Math.sin(Math.min(1, t0 * 1.15 + 0.20) * Math.PI * 0.78);
+          const outerY = halfWid * (0.55 + 0.52 * env);
+          const notchY = halfWid * (0.30 + 0.32 * env);
+          if (k < teethCount - 1) {
+            pctx.lineTo(len * tNotch, notchY);
+          }
+          pctx.quadraticCurveTo(len * (t0 + 0.42 / teethCount), outerY * 0.92, len * Math.min(0.96, tTip), outerY);
+        }
+        pctx.lineTo(0, halfWid * 0.38);
+        pctx.closePath();
+      };
+
+      // 1) Clean anime pine silhouette + dark-spruce ink contour
+      traceSerratedConiferPad();
+      pctx.fillStyle = brightVariant ? '#349154' : '#297e47';
+      pctx.fill();
+      pctx.strokeStyle = '#154428';
+      pctx.lineWidth = 4.6;
+      pctx.stroke();
+
+      // 2) Clip inside the conifer pad to paint clean anime cel-shading (NO midrib vein!)
+      pctx.save();
+      traceSerratedConiferPad();
+      pctx.clip();
+
+      // Deep pine shadow band along lower/base underside for lush evergreen depth
+      const shGrad = pctx.createLinearGradient(0, -halfWid, 0, halfWid);
+      shGrad.addColorStop(0.0, brightVariant ? '#5cb86c' : '#48a65c');
+      shGrad.addColorStop(0.48, brightVariant ? '#359255' : '#2b8049');
+      shGrad.addColorStop(1.0, '#1d5c35');
+      pctx.fillStyle = shGrad;
+      pctx.fillRect(0, -halfWid * 1.3, len * 1.05, halfWid * 2.6);
+
+      // Sunlit Ghibli yellow-green highlight brush strokes on the outer pine-needle tips!
+      const tipGrad = pctx.createLinearGradient(len * 0.45, 0, len, 0);
+      tipGrad.addColorStop(0.0, 'rgba(130, 218, 132, 0)');
+      tipGrad.addColorStop(1.0, brightVariant ? 'rgba(142, 226, 136, 0.82)' : 'rgba(116, 208, 122, 0.68)');
+      pctx.fillStyle = tipGrad;
+      pctx.fillRect(len * 0.45, -halfWid * 1.2, len * 0.60, halfWid * 2.4);
+
+      // Subtle longitudinal needle-groove cel strokes (suggests bundled needles without messy hairlines)
+      pctx.strokeStyle = 'rgba(20, 68, 38, 0.32)';
+      pctx.lineWidth = 2.2;
+      for (const gy of [-0.36, 0.06, 0.42]) {
+        pctx.beginPath();
+        pctx.moveTo(len * 0.12, halfWid * gy * 0.5);
+        pctx.lineTo(len * 0.84, halfWid * gy);
+        pctx.stroke();
+      }
+
+      pctx.restore();
+      pctx.restore();
+    };
+
+    // 5 pairs of outward-fanning serrated conifer needle-pads + lush needle-covered central shoot
+    // (Canvas bottom y=502 is v=0 trunk base; canvas top y=16 is v=1 outer drooping tip!)
+    const lateralShoots: [number, number, number, number, number, number, boolean][] = [
+      [256, 470, 62, 336, 26, 5, false],
+      [256, 464, 450, 330, 26, 5, true],
+      [256, 392, 58, 244, 25, 5, true],
+      [256, 386, 454, 238, 25, 5, false],
+      [256, 310, 76, 156, 24, 5, false],
+      [256, 304, 436, 150, 24, 5, true],
+      [256, 228, 108, 86, 22, 4, true],
+      [256, 222, 404, 80, 22, 4, false],
+      [256, 154, 154, 38, 20, 4, false],
+      [256, 150, 358, 36, 20, 4, true],
+    ];
+    for (const [x0, y0, x1, y1, hw, tc, bright] of lateralShoots) {
+      drawConiferTuftPad(x0, y0, x1, y1, hw, tc, bright);
+    }
+
+    // Central conifer leader shoot completely clothed in pine needles (zero bare stem!)
+    drawConiferTuftPad(256, 504, 256, 14, 30, 9, true);
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    return tex;
+  })();
+
+  // Deeper, richer dark-evergreen pine tint matching the darkened Christmas wreath
+  const pineNeedleMat = mat({
+    map: pineNeedleSprayTex,
+    color: 0xb8ceb9,
+    roughness: 0.70,
+    metalness: 0.0,
+    alphaTest: 0.40,
+    side: THREE.DoubleSide,
+    rimScale: 1.30,
+    celStrength: 0.58,
+  });
+
+  // Lush S-Sweep Fir-Bough Geometry (restored 3-wing fullness with graceful outstretched tip)
+  const pineFrondGeo = (() => {
+    const frondLen = 0.46;
+    const frondWid = 0.35;
+    const layers: THREE.BufferGeometry[] = [];
+    for (const tilt of [0, 0.46, -0.46]) {
+      const wScale = tilt === 0 ? 1.0 : 0.64;
+      const g = new THREE.PlaneGeometry(frondWid * wScale, frondLen, 6, 9);
+      g.rotateX(Math.PI / 2);
+      g.translate(0, 0, frondLen * 0.5);
+
+      const pos = g.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const px = pos.getX(i);
+        const pz = pos.getZ(i);
+        const t = THREE.MathUtils.clamp(pz / frondLen, 0, 1);
+        const sideFrac = Math.abs(px) / (frondWid * wScale * 0.5);
+        const sCurveY =
+          0.014 * Math.sin(t * Math.PI) - 0.076 * Math.pow(t, 1.42) + 0.018 * Math.pow(t, 2.8);
+        const roofSkirtY = -Math.pow(sideFrac, 1.15) * 0.042 * (0.35 + 0.65 * t);
+        const rx = px * Math.cos(tilt) - roofSkirtY * Math.sin(tilt);
+        const ry = px * Math.sin(tilt) + roofSkirtY * Math.cos(tilt) + sCurveY;
+        pos.setXYZ(i, rx, ry, pz);
+      }
+      g.computeVertexNormals();
+      layers.push(g);
+    }
+    return BufferGeometryUtils.mergeGeometries(layers, false)!;
+  })();
+
+  const treeRand = (seed: number) => {
+    const s = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+    return s - Math.floor(s);
+  };
+
+  // Restored Lush Fullness with Subtle Tier Layering & Moderate Droop Variation:
+  // 13 full tiers (14..8 boughs per tier) — rich and fluffy without looking sparse or solid-walled!
+  const boughTransforms: {
+    pos: THREE.Vector3;
     yaw: number;
     pitch: number;
     roll: number;
-    scale: number;
-    light: boolean;
-  }[] = [
-    { stemBase: [-0.05, 0.56, 0.04], leafBase: [-0.14, 0.68, 0.12], yaw: -0.65, pitch: 0.48, roll: -0.12, scale: 0.68, light: false },
-    { stemBase: [0.05, 0.58, -0.04], leafBase: [0.15, 0.70, -0.10], yaw: 2.35, pitch: 0.50, roll: 0.10, scale: 0.68, light: true },
-    { stemBase: [-0.04, 0.62, -0.04], leafBase: [-0.12, 0.75, -0.14], yaw: -2.25, pitch: 0.46, roll: 0.08, scale: 0.85, light: false },
-    { stemBase: [0.04, 0.64, 0.04], leafBase: [0.13, 0.78, 0.14], yaw: 0.75, pitch: 0.44, roll: -0.08, scale: 0.85, light: true },
-    { stemBase: [-0.08, 0.86, 0.06], leafBase: [-0.20, 1.04, 0.16], yaw: -0.85, pitch: 0.36, roll: -0.10, scale: 1.0, light: true },
-    { stemBase: [0.02, 0.90, 0.05], leafBase: [0.06, 1.08, 0.18], yaw: 0.22, pitch: 0.38, roll: 0.06, scale: 1.0, light: false },
-    { stemBase: [0.08, 0.88, -0.06], leafBase: [0.20, 1.05, -0.15], yaw: 1.95, pitch: 0.38, roll: -0.12, scale: 0.85, light: true },
-    { stemBase: [-0.06, 0.94, -0.05], leafBase: [-0.18, 1.12, -0.14], yaw: -1.85, pitch: 0.34, roll: 0.10, scale: 1.0, light: false },
-    { stemBase: [-0.09, 0.98, 0.02], leafBase: [-0.22, 1.16, 0.04], yaw: -1.42, pitch: 0.32, roll: -0.06, scale: 0.85, light: true },
-    { stemBase: [0.01, 1.18, -0.01], leafBase: [-0.08, 1.38, 0.08], yaw: -0.45, pitch: 0.22, roll: -0.08, scale: 1.0, light: true },
-    { stemBase: [0.01, 1.22, -0.01], leafBase: [0.09, 1.42, -0.07], yaw: 2.55, pitch: 0.24, roll: 0.08, scale: 1.0, light: false },
-    { stemBase: [0.0, 1.28, 0.0], leafBase: [-0.10, 1.48, -0.08], yaw: -2.15, pitch: 0.20, roll: 0.05, scale: 0.85, light: true },
-    { stemBase: [0.0, 1.34, 0.0], leafBase: [0.06, 1.54, 0.09], yaw: 0.58, pitch: 0.16, roll: -0.05, scale: 0.85, light: false },
-  ];
+    sx: number;
+    sy: number;
+    sz: number;
+  }[] = [];
 
-  const lightLeaves = leafPlacements.filter((l) => l.light);
-  const darkLeaves = leafPlacements.filter((l) => !l.light);
-  const lightLeavesInst = new THREE.InstancedMesh(
-    broadLeafBaseGeo,
-    plantLeafLightMat,
-    lightLeaves.length
-  );
-  lightLeavesInst.castShadow = true;
-  lightLeavesInst.receiveShadow = true;
+  const branchTipAnchors: { x: number; y: number; z: number; r: number }[] = [];
 
-  const darkLeavesInst = new THREE.InstancedMesh(
-    broadLeafBaseGeo,
-    plantLeafMat,
-    darkLeaves.length
-  );
-  darkLeavesInst.castShadow = true;
-  darkLeavesInst.receiveShadow = true;
+  const numWhorls = 13;
+  for (let w = 0; w < numWhorls; w++) {
+    const wt = w / (numWhorls - 1);
+    const baseY = THREE.MathUtils.lerp(0.41, 1.82, Math.pow(wt, 0.94));
+    const count = Math.max(8, Math.round(THREE.MathUtils.lerp(14, 8, wt)));
+    const baseReach = THREE.MathUtils.lerp(1.26, 0.29, Math.pow(wt, 0.88));
+    const whorlPhase = w * 2.15 + treeRand(w * 13) * 0.45;
 
-  let lIdx = 0;
-  let dIdx = 0;
-  for (const lp of leafPlacements) {
-    const pStart = new THREE.Vector3(...lp.stemBase);
-    const pEnd = new THREE.Vector3(...lp.leafBase);
-    const pMid = pStart.clone().lerp(pEnd, 0.5);
-    pMid.y += 0.04;
+    for (let b = 0; b < count; b++) {
+      const seed = w * 41 + b * 23 + 7;
+      const yawJitter = (treeRand(seed) - 0.5) * 0.28;
+      const yaw = (b / count) * Math.PI * 2 + whorlPhase + yawJitter;
 
-    const petiole = new THREE.Mesh(
-      createTaperedCurveGeometry([pStart, pMid, pEnd], 0.013, 0.007, 10, 6),
-      plantStemMat
-    );
-    petiole.castShadow = true;
-    plant.add(petiole);
+      const reachMult = 0.85 + treeRand(seed + 3) * 0.34;
+      const sz = baseReach * reachMult;
+      const sx = THREE.MathUtils.lerp(1.22, 0.52, wt) * (0.90 + treeRand(seed + 7) * 0.22);
 
-    _instPos.set(
-      plantOrigin.x + pEnd.x,
-      plantOrigin.y + pEnd.y,
-      plantOrigin.z + pEnd.z
-    );
-    _instEuler.set(lp.pitch, lp.yaw, lp.roll, 'YXZ');
-    _instQuat.setFromEuler(_instEuler);
-    _instScale.setScalar(lp.scale);
-    _instMat.compose(_instPos, _instQuat, _instScale);
+      // Moderate, natural pitch variation (~±6° around the soft downward sweep)
+      const modeOffset = ((b + w) % 3 - 1) * 0.085;
+      const pitch =
+        THREE.MathUtils.lerp(0.30, 0.23, wt) + modeOffset + (treeRand(seed + 19) - 0.5) * 0.08;
+      const loftY = ((b + w) % 3 === 0 ? 0.016 : -0.010) + (treeRand(seed + 11) - 0.5) * 0.020;
+      const roll = (treeRand(seed + 23) - 0.5) * 0.20;
 
-    if (lp.light) {
-      lightLeavesInst.setMatrixAt(lIdx++, _instMat);
-    } else {
-      darkLeavesInst.setMatrixAt(dIdx++, _instMat);
+      const startR = THREE.MathUtils.lerp(0.036, 0.008, wt);
+      const bx = Math.cos(yaw) * startR;
+      const bz = Math.sin(yaw) * startR;
+      const by = baseY + loftY;
+
+      boughTransforms.push({
+        pos: new THREE.Vector3(bx, by, bz),
+        yaw: Math.PI / 2 - yaw,
+        pitch,
+        roll,
+        sx,
+        sy: sx,
+        sz,
+      });
+
+      const tipDist = startR + 0.40 * sz * Math.cos(pitch);
+      const tipY = by - 0.40 * sz * Math.sin(pitch) - 0.055 * sz;
+      branchTipAnchors.push({
+        x: Math.cos(yaw) * tipDist,
+        y: tipY,
+        z: Math.sin(yaw) * tipDist,
+        r: tipDist,
+      });
+
+      // Keep bottom 2 whorls lightly relaxed (every 3rd inner sprig), full inner richness from whorl 2 upward!
+      const addInner = w < 2 ? b % 3 === 0 : b % 2 === 0 || wt > 0.55;
+      if (addInner) {
+        boughTransforms.push({
+          pos: new THREE.Vector3(bx * 0.65, by + 0.025, bz * 0.65),
+          yaw: Math.PI / 2 - yaw + 0.30,
+          pitch: pitch + 0.10,
+          roll: -roll * 0.5,
+          sx: sx * 0.84,
+          sy: sx * 0.84,
+          sz: sz * 0.58,
+        });
+      }
     }
   }
-  lightLeavesInst.instanceMatrix.needsUpdate = true;
-  lightLeavesInst.computeBoundingSphere();
-  darkLeavesInst.instanceMatrix.needsUpdate = true;
-  darkLeavesInst.computeBoundingSphere();
-  group.add(lightLeavesInst, darkLeavesInst);
 
-  group.add(plant);
-  addBoxCollider('col_liv_plant', 6.74, 0.5, -9.66, 0.52, 1.2, 0.52);
+  // Lush Crown Cap right beneath the Star Topper (Y = 1.86..1.90)
+  for (const [crownY, crownCount, crownSz, crownPitch] of [
+    [1.86, 8, 0.26, 0.28],
+    [1.90, 7, 0.20, 0.38],
+  ] as const) {
+    for (let t = 0; t < crownCount; t++) {
+      const tAng = (t / crownCount) * Math.PI * 2 + crownY * 3.1;
+      boughTransforms.push({
+        pos: new THREE.Vector3(0, crownY, 0),
+        yaw: Math.PI / 2 - tAng,
+        pitch: crownPitch + (t % 3) * 0.05,
+        roll: 0,
+        sx: 0.46,
+        sy: 0.46,
+        sz: crownSz,
+      });
+    }
+  }
+
+  const pineBoughsInst = new THREE.InstancedMesh(
+    pineFrondGeo,
+    pineNeedleMat,
+    boughTransforms.length
+  );
+  pineBoughsInst.castShadow = true;
+  pineBoughsInst.receiveShadow = true;
+
+  for (let i = 0; i < boughTransforms.length; i++) {
+    const bt = boughTransforms[i];
+    _instPos.set(
+      treeOrigin.x + bt.pos.x,
+      treeOrigin.y + bt.pos.y,
+      treeOrigin.z + bt.pos.z
+    );
+    _instEuler.set(bt.pitch, bt.yaw, bt.roll, 'YXZ');
+    _instQuat.setFromEuler(_instEuler);
+    _instScale.set(bt.sx, bt.sy, bt.sz);
+    _instMat.compose(_instPos, _instQuat, _instScale);
+    pineBoughsInst.setMatrixAt(i, _instMat);
+  }
+  pineBoughsInst.instanceMatrix.needsUpdate = true;
+  pineBoughsInst.computeBoundingSphere();
+  group.add(pineBoughsInst);
+
+  // 4) 10 Sculpted Natural Brown Pinecones Nestled Organically on Branches
+  const treePineconeMat = mat({ color: 0x6b4428, roughness: 0.84, metalness: 0.0 });
+  const pineconeGeo = new THREE.ConeGeometry(0.024, 0.058, 7, 3);
+  pineconeGeo.rotateX(Math.PI); // Tapered tip pointing downward like hanging spruce cones
+  for (let p = 0; p < 10; p++) {
+    const anchor = branchTipAnchors[(p * 9 + 4) % branchTipAnchors.length];
+    const pCone = new THREE.Mesh(pineconeGeo, treePineconeMat);
+    pCone.position.set(anchor.x * 0.82, anchor.y - 0.015, anchor.z * 0.82);
+    pCone.rotation.set((treeRand(p * 7) - 0.5) * 0.3, p * 1.1, (treeRand(p * 11) - 0.5) * 0.3);
+    pCone.castShadow = true;
+    xmasTree.add(pCone);
+  }
+
+  // 5) Naturally Draped Golden Tinsel Garland with Catenary Swag Loops (not a rigid coil!)
+  const garlandPts: THREE.Vector3[] = [];
+  const garlandSteps = 84;
+  for (let i = 0; i <= garlandSteps; i++) {
+    const t = i / garlandSteps;
+    const swagLoop = Math.abs(Math.sin(t * Math.PI * 19)); // 19 draped festoon swags
+    const gy = THREE.MathUtils.lerp(0.44, 1.66, t) - (1 - swagLoop) * 0.042;
+    const gr =
+      THREE.MathUtils.lerp(0.46, 0.11, Math.pow(t, 0.90)) *
+      (0.92 + 0.10 * swagLoop + (treeRand(i * 3) - 0.5) * 0.04);
+    const gAng = t * Math.PI * 2 * 4.2;
+    garlandPts.push(new THREE.Vector3(Math.cos(gAng) * gr, gy, Math.sin(gAng) * gr));
+  }
+  const garlandMesh = new THREE.Mesh(
+    createTaperedCurveGeometry(garlandPts, 0.011, 0.007, 108, 7),
+    treeGoldTrimMat
+  );
+  xmasTree.add(garlandMesh);
+
+  // 6) 28 Anime Cel-Shaded Candy-Gloss Christmas Baubles + Outlines
+  const baubleMats = [
+    mat({ color: 0xec4456, roughness: 0.28, metalness: 0.16, celStrength: 0.58, rimScale: 1.4 }),
+    mat({ color: 0xf9d576, roughness: 0.28, metalness: 0.38, celStrength: 0.54, rimScale: 1.4 }),
+    mat({ color: 0x3a965e, roughness: 0.28, metalness: 0.18, celStrength: 0.58, rimScale: 1.4 }),
+    mat({ color: 0xfff8ee, roughness: 0.30, metalness: 0.12, celStrength: 0.52, rimScale: 1.4 }),
+  ];
+  const baubleGeo = new THREE.SphereGeometry(0.032, 12, 10);
+  const baubleCapGeo = new THREE.CylinderGeometry(0.007, 0.008, 0.012, 8);
+  for (let i = 0; i < 28; i++) {
+    const idx = Math.floor(((i * 7 + 3) / 28) * branchTipAnchors.length) % branchTipAnchors.length;
+    const anchor = branchTipAnchors[idx];
+    const bScale = 0.85 + (i % 3) * 0.16;
+    const bx = anchor.x * 0.90;
+    const by = anchor.y - 0.028 * bScale;
+    const bz = anchor.z * 0.90;
+
+    const bauble = new THREE.Mesh(baubleGeo, baubleMats[i % baubleMats.length]);
+    bauble.position.set(bx, by, bz);
+    bauble.scale.setScalar(bScale);
+    bauble.castShadow = true;
+    outlines.addOutline(bauble, 1.055);
+    xmasTree.add(bauble);
+
+    const cap = new THREE.Mesh(baubleCapGeo, treeGoldTrimMat);
+    cap.position.set(bx, by + 0.030 * bScale, bz);
+    xmasTree.add(cap);
+  }
+
+  // 7) 56 Dreamy Anime Bokeh Fairy Lights + Soft Warm Halo Orbs + Cozy Golden PointLight
+  const fairyGlowMats = [
+    new THREE.MeshStandardMaterial({
+      color: 0xfff4c6,
+      emissive: new THREE.Color(0xffd670),
+      emissiveIntensity: 2.5,
+      roughness: 0.3,
+    }),
+    new THREE.MeshStandardMaterial({
+      color: 0xfffbf0,
+      emissive: new THREE.Color(0xfff2c8),
+      emissiveIntensity: 2.4,
+      roughness: 0.3,
+    }),
+    new THREE.MeshStandardMaterial({
+      color: 0xffc8bc,
+      emissive: new THREE.Color(0xff7e6e),
+      emissiveIntensity: 2.2,
+      roughness: 0.3,
+    }),
+  ];
+  const fairyBulbGeo = new THREE.SphereGeometry(0.015, 8, 6);
+  const fairyBokehGeo = new THREE.SphereGeometry(0.036, 8, 6);
+  const fairyBokehMat = new THREE.MeshBasicMaterial({
+    color: 0xffe498,
+    transparent: true,
+    opacity: 0.20,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const fairyBokehInst = new THREE.InstancedMesh(fairyBokehGeo, fairyBokehMat, 56);
+  for (let i = 0; i < 56; i++) {
+    const anchor = branchTipAnchors[(i * 5 + 1) % branchTipAnchors.length];
+    const inward = 0.76 + (i % 3) * 0.11;
+    const lx = anchor.x * inward;
+    const ly = anchor.y + 0.012 + (i % 2 === 0 ? 0.008 : -0.008);
+    const lz = anchor.z * inward;
+
+    const bulb = new THREE.Mesh(fairyBulbGeo, fairyGlowMats[i % fairyGlowMats.length]);
+    bulb.position.set(lx, ly, lz);
+    xmasTree.add(bulb);
+
+    _instPos.set(treeOrigin.x + lx, treeOrigin.y + ly, treeOrigin.z + lz);
+    _instQuat.identity();
+    _instScale.setScalar(0.85 + (i % 3) * 0.18);
+    _instMat.compose(_instPos, _instQuat, _instScale);
+    fairyBokehInst.setMatrixAt(i, _instMat);
+  }
+  fairyBokehInst.instanceMatrix.needsUpdate = true;
+  fairyBokehInst.computeBoundingSphere();
+  group.add(fairyBokehInst);
+
+  // Warm golden glow light illuminating the pine needles, gifts, and surrounding corner
+  const xmasTreeLight = new THREE.PointLight(0xffcf78, 1.45, 3.9, 1.8);
+  xmasTreeLight.position.set(-0.18, 1.24, 0.18);
+  xmasTree.add(xmasTreeLight);
+
+  // 8) Glowing 3D Golden 5-Pointed Star Topper + Subtle Halo Glow
+  const starShape = new THREE.Shape();
+  const starOuterR = 0.112;
+  const starInnerR = 0.046;
+  for (let p = 0; p < 10; p++) {
+    const r = p % 2 === 0 ? starOuterR : starInnerR;
+    const ang = (p / 10) * Math.PI * 2 + Math.PI / 2;
+    const sx = Math.cos(ang) * r;
+    const sy = Math.sin(ang) * r;
+    if (p === 0) starShape.moveTo(sx, sy);
+    else starShape.lineTo(sx, sy);
+  }
+  starShape.closePath();
+  const starGeo = new THREE.ExtrudeGeometry(starShape, {
+    depth: 0.024,
+    bevelEnabled: true,
+    bevelThickness: 0.008,
+    bevelSize: 0.006,
+    bevelSegments: 2,
+  });
+  starGeo.center();
+  const starTopperMat = new THREE.MeshStandardMaterial({
+    color: 0xffe994,
+    emissive: new THREE.Color(0xffc94a),
+    emissiveIntensity: 2.5,
+    roughness: 0.22,
+    metalness: 0.62,
+  });
+  const starTopper = new THREE.Mesh(starGeo, starTopperMat);
+  starTopper.position.set(0, 1.94, 0);
+  starTopper.rotation.y = -Math.PI * 0.22;
+  xmasTree.add(starTopper);
+
+  const starHalo = new THREE.Mesh(
+    new THREE.SphereGeometry(0.145, 14, 12),
+    new THREE.MeshBasicMaterial({
+      color: 0xffdf82,
+      transparent: true,
+      opacity: 0.22,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    })
+  );
+  starHalo.position.set(0, 1.94, 0);
+  starHalo.userData.dynamic = true;
+  xmasTree.add(starHalo);
+
+  // 9) 4 Wrapped Red & Green Christmas Gift Boxes around the Tree Skirt
+  const giftSpecs: {
+    pos: [number, number, number];
+    size: [number, number, number];
+    yaw: number;
+    boxHex: number;
+    ribbonHex: number;
+  }[] = [
+    { pos: [-0.28, 0.09, 0.26], size: [0.22, 0.16, 0.20], yaw: 0.32, boxHex: 0xc82436, ribbonHex: 0xf2cd74 },
+    { pos: [0.18, 0.075, 0.34], size: [0.18, 0.13, 0.18], yaw: -0.42, boxHex: 0x1f6e3c, ribbonHex: 0xf7efe0 },
+    { pos: [-0.36, 0.065, -0.06], size: [0.16, 0.11, 0.16], yaw: 0.65, boxHex: 0xfaf2e4, ribbonHex: 0xc82436 },
+    { pos: [-0.06, 0.055, 0.38], size: [0.14, 0.095, 0.13], yaw: 0.15, boxHex: 0x247844, ribbonHex: 0xf2cd74 },
+  ];
+  for (const g of giftSpecs) {
+    const giftGroup = new THREE.Group();
+    giftGroup.position.set(...g.pos);
+    giftGroup.rotation.y = g.yaw;
+    const [gw, gh, gd] = g.size;
+    const boxMat = mat({ color: g.boxHex, roughness: 0.56, metalness: 0.04 });
+    const ribMat = mat({ color: g.ribbonHex, roughness: 0.36, metalness: 0.28 });
+
+    const giftBox = new THREE.Mesh(createBeveledBox(gw, gh, gd, 0.008, 2), boxMat);
+    giftBox.castShadow = true;
+    giftBox.receiveShadow = true;
+    outlines.addOutline(giftBox, 1.03);
+    giftGroup.add(giftBox);
+
+    const ribX = new THREE.Mesh(new THREE.BoxGeometry(gw + 0.008, gh + 0.008, 0.022), ribMat);
+    const ribZ = new THREE.Mesh(new THREE.BoxGeometry(0.022, gh + 0.008, gd + 0.008), ribMat);
+    giftGroup.add(ribX, ribZ);
+
+    for (const bs of [-1, 1]) {
+      const bow = new THREE.Mesh(new THREE.TorusGeometry(0.020, 0.006, 6, 12), ribMat);
+      bow.position.set(bs * 0.018, gh * 0.5 + 0.016, 0);
+      bow.rotation.z = bs * 0.35;
+      giftGroup.add(bow);
+    }
+    xmasTree.add(giftGroup);
+  }
+
+  group.add(xmasTree);
 
   // =========================================================================
-  // 10B. SE CORNER 5-TIER STANDING BOOKSHELF (Preserved Oak Frame + Sculpted Books)
+  // 10B. GLAZED CERAMIC PET FOOD & WATER BOWL SET NEAR CHRISTMAS TREE BY EAST WINDOW
+  //      (圣诞树附近靠窗地面：釉面瓷质双碗宠物食盆，含手绘釉下彩爪印纹、猫粮与清澈饮水)
+  // =========================================================================
+  {
+    const petStation = new THREE.Group();
+    petStation.name = 'LivingCeramicPetBowlStation';
+    petStation.position.set(6.72, 0, -8.36);
+    petStation.rotation.y = -Math.PI * 0.5 + 0.12;
+
+    // Soft rounded-corner cream-sage silicone/linen pet feeding placemat
+    const matPadMat = mat({
+      color: 0xe6e8de,
+      roughness: 0.86,
+      metalness: 0.0,
+      celStrength: 0.42,
+    });
+    const matPad = new THREE.Mesh(
+      createBeveledSlab(0.50, 0.008, 0.28, 0.06, 0.003),
+      matPadMat
+    );
+    matPad.position.y = 0.004;
+    matPad.receiveShadow = true;
+    petStation.add(matPad);
+
+    // Subtle recessed rim border around the feeding mat
+    const matRim = new THREE.Mesh(
+      createBeveledSlab(0.46, 0.004, 0.24, 0.05, 0.002),
+      mat({ color: 0xd7dccd, roughness: 0.88, metalness: 0.0 })
+    );
+    matRim.position.y = 0.0085;
+    matRim.receiveShadow = true;
+    petStation.add(matRim);
+
+    // Procedural hand-painted under-glaze ceramic exterior pattern (cream porcelain + sage/cobalt paw & fish motifs)
+    const bowlDecalTex = (() => {
+      const bc = document.createElement('canvas');
+      bc.width = 512;
+      bc.height = 128;
+      const bctx = bc.getContext('2d')!;
+      bctx.fillStyle = '#fcf9f2';
+      bctx.fillRect(0, 0, 512, 128);
+      // Hand-painted thin celadon-sage & muted cobalt ceramic rim bands
+      bctx.fillStyle = '#7ea28a';
+      bctx.fillRect(0, 14, 512, 6);
+      bctx.fillStyle = '#5c7c9a';
+      bctx.fillRect(0, 108, 512, 5);
+
+      // Repeating tiny under-glaze paw prints & delicate botanical dots around bowl circumference
+      for (let i = 0; i < 6; i++) {
+        const cx = i * 85 + 42;
+        const cy = 64;
+        bctx.fillStyle = i % 2 === 0 ? '#5b7a98' : '#799c84';
+        // Main paw pad
+        bctx.beginPath();
+        bctx.ellipse(cx, cy + 5, 9.5, 7.2, 0, 0, Math.PI * 2);
+        bctx.fill();
+        // 4 tiny toe beans
+        for (const [tx, ty] of [
+          [-10, -5],
+          [-3.5, -10],
+          [3.5, -10],
+          [10, -5],
+        ]) {
+          bctx.beginPath();
+          bctx.arc(cx + tx, cy + ty, 3.2, 0, Math.PI * 2);
+          bctx.fill();
+        }
+        // Small ceramic glaze accent dot between paws
+        bctx.fillStyle = '#d49a6a';
+        bctx.beginPath();
+        bctx.arc(cx + 42, cy, 3.0, 0, Math.PI * 2);
+        bctx.fill();
+      }
+      const tex = new THREE.CanvasTexture(bc);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.ClampToEdgeWrapping;
+      return tex;
+    })();
+
+    // Authentic glossy glazed porcelain ceramic material (高光白瓷釉面质感)
+    const ceramicGlazeMat = new THREE.MeshPhysicalMaterial({
+      map: bowlDecalTex,
+      color: 0xffffff,
+      roughness: 0.11,
+      metalness: 0.02,
+      clearcoat: 0.94,
+      clearcoatRoughness: 0.06,
+      reflectivity: 0.72,
+    });
+    const ceramicInnerMat = new THREE.MeshPhysicalMaterial({
+      color: 0xfdfbf6,
+      roughness: 0.10,
+      metalness: 0.02,
+      clearcoat: 0.96,
+      clearcoatRoughness: 0.05,
+      reflectivity: 0.75,
+    });
+
+    // Sculpted ceramic pet bowl Lathe profile (solid footed base -> curved glazed belly -> rolled porcelain lip -> deep concave basin)
+    const bowlOuterPts = [
+      new THREE.Vector2(0.0, 0.002),
+      new THREE.Vector2(0.066, 0.002),
+      new THREE.Vector2(0.072, 0.010),
+      new THREE.Vector2(0.088, 0.032),
+      new THREE.Vector2(0.094, 0.058),
+      new THREE.Vector2(0.096, 0.074),
+      new THREE.Vector2(0.091, 0.080),
+      new THREE.Vector2(0.084, 0.078),
+    ];
+    const bowlOuterGeo = new THREE.LatheGeometry(bowlOuterPts, 32);
+
+    const bowlInnerPts = [
+      new THREE.Vector2(0.084, 0.078),
+      new THREE.Vector2(0.080, 0.066),
+      new THREE.Vector2(0.074, 0.038),
+      new THREE.Vector2(0.054, 0.018),
+      new THREE.Vector2(0.0, 0.014),
+    ];
+    const bowlInnerGeo = new THREE.LatheGeometry(bowlInnerPts, 32);
+
+    const kibbleMat = mat({
+      color: 0x7b4c2d,
+      roughness: 0.88,
+      metalness: 0.0,
+      celStrength: 0.45,
+    });
+    const kibbleDarkMat = mat({
+      color: 0x5c371f,
+      roughness: 0.90,
+      metalness: 0.0,
+    });
+    const waterMat = new THREE.MeshPhysicalMaterial({
+      color: 0xdff4fa,
+      roughness: 0.04,
+      metalness: 0.02,
+      transparent: true,
+      opacity: 0.68,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.03,
+      reflectivity: 0.9,
+    });
+
+    // Left Ceramic Bowl (Food) & Right Ceramic Bowl (Water)
+    for (const [idx, bx] of [
+      [0, -0.115],
+      [1, 0.115],
+    ] as const) {
+      const bowlGroup = new THREE.Group();
+      bowlGroup.position.set(bx, 0.008, 0);
+
+      const outerMesh = new THREE.Mesh(bowlOuterGeo, ceramicGlazeMat);
+      outerMesh.castShadow = true;
+      outerMesh.receiveShadow = true;
+      outlines.addOutline(outerMesh, 1.02);
+      bowlGroup.add(outerMesh);
+
+      const innerMesh = new THREE.Mesh(bowlInnerGeo, ceramicInnerMat);
+      innerMesh.receiveShadow = true;
+      bowlGroup.add(innerMesh);
+
+      if (idx === 0) {
+        // Pet kibble mound + scattered 3D crunchy kibble pellets
+        const mound = new THREE.Mesh(
+          new THREE.SphereGeometry(0.066, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.52),
+          kibbleMat
+        );
+        mound.scale.set(1.0, 0.46, 1.0);
+        mound.position.y = 0.030;
+        bowlGroup.add(mound);
+
+        const pelletGeo = new THREE.DodecahedronGeometry(0.0075, 0);
+        for (let p = 0; p < 18; p++) {
+          const a = p * 2.399;
+          const r = 0.012 + (p / 18) * 0.048;
+          const py = 0.056 - (r / 0.066) * 0.020;
+          const pellet = new THREE.Mesh(pelletGeo, p % 3 === 0 ? kibbleDarkMat : kibbleMat);
+          pellet.position.set(Math.cos(a) * r, py, Math.sin(a) * r);
+          pellet.rotation.set(p * 0.7, p * 1.1, p * 0.4);
+          pellet.scale.set(1.1, 0.72, 0.95);
+          bowlGroup.add(pellet);
+        }
+      } else {
+        // Clear reflective drinking water surface
+        const waterDisc = new THREE.Mesh(new THREE.CircleGeometry(0.076, 28), waterMat);
+        waterDisc.rotation.x = -Math.PI / 2;
+        waterDisc.position.y = 0.054;
+        bowlGroup.add(waterDisc);
+      }
+
+      petStation.add(bowlGroup);
+    }
+
+    group.add(petStation);
+  }
+  addBoxCollider('col_liv_plant', 6.74, 0.8, -9.66, 0.72, 1.8, 0.72);
+
+  // =========================================================================
+  // 10B. AMERICAN HERITAGE SOLID-WOOD LIBRARY BOOKCASE (电视最右边美式实木书架)
   //      & MODERN VINYL TURNTABLE MEDIA CABINET + BOOKSHELF BESIDE SMALL SOFA
   // =========================================================================
   const buildStandingCornerBookRack = (
@@ -4449,75 +8589,159 @@ export function buildLivingRoom(
     rackGroup.position.set(originX, 0, originZ);
     rackGroup.rotation.y = rotY;
 
-    // 4 slim vertical light-oak corner posts + back cross-brace
-    const postGeo = createBeveledBox(0.034, totalHeight, 0.034, 0.005, 2);
-    const halfW = shelfWidth / 2 - 0.022;
-    const halfD = shelfDepth / 2 - 0.022;
-    for (const [px, pz] of [
-      [-halfW, -halfD],
-      [halfW, -halfD],
-      [-halfW, halfD],
-      [halfW, halfD],
-    ] as const) {
-      const post = new THREE.Mesh(postGeo, oakMat);
-      post.position.set(px, totalHeight / 2, pz);
-      post.castShadow = true;
-      post.receiveShadow = true;
-      rackGroup.add(post);
-    }
+    const halfW = shelfWidth / 2;
+    const halfD = shelfDepth / 2;
 
-    // Back recessed slat panel for deep cubby AO contrast
-    const backPanel = new THREE.Mesh(
-      createBeveledBox(shelfWidth - 0.04, totalHeight - 0.16, 0.014, 0.003, 1),
+    // 1) Crisp Sharp-Edged Stepped American Crown Cornice (硬朗直角外挑顶冠，告别发圆)
+    const crownTop = new THREE.Mesh(
+      new THREE.BoxGeometry(shelfWidth + 0.085, 0.030, shelfDepth + 0.068),
+      oakMat
+    );
+    crownTop.position.set(0, totalHeight + 0.015, 0.008);
+    crownTop.castShadow = true;
+    crownTop.receiveShadow = true;
+    rackGroup.add(crownTop);
+
+    const crownCove = new THREE.Mesh(
+      new THREE.BoxGeometry(shelfWidth + 0.048, 0.022, shelfDepth + 0.036),
       darkOakMat
     );
-    backPanel.position.set(0, totalHeight / 2 + 0.04, -halfD + 0.006);
-    backPanel.receiveShadow = true;
-    rackGroup.add(backPanel);
+    crownCove.position.set(0, totalHeight - 0.011, 0.004);
+    rackGroup.add(crownCove);
 
-    const tierBoardGeo = createBeveledSlab(shelfWidth, 0.026, shelfDepth, 0.016, 0.006);
-    const sideRailGeo = createBeveledBox(0.020, 0.022, shelfDepth - 0.04, 0.003, 1);
-    const tierGap = (totalHeight - 0.22) / (numTiers - 1);
+    const headerApron = new THREE.Mesh(
+      new THREE.BoxGeometry(shelfWidth - 0.05, 0.048, 0.018),
+      oakMat
+    );
+    headerApron.position.set(0, totalHeight - 0.046, halfD - 0.012);
+    rackGroup.add(headerApron);
 
-    for (let t = 0; t < numTiers; t++) {
-      const tierY = 0.14 + t * tierGap;
+    // 2) Crisp Flush Paneled Side Walls (齐平直框，不再突出圆边柱)
+    for (const sx of [-halfW + 0.018, halfW - 0.018]) {
+      const sideWall = new THREE.Mesh(
+        new THREE.BoxGeometry(0.036, totalHeight - 0.05, shelfDepth - 0.01),
+        oakMat
+      );
+      sideWall.position.set(sx, totalHeight / 2 - 0.015, 0);
+      sideWall.castShadow = true;
+      sideWall.receiveShadow = true;
+      rackGroup.add(sideWall);
+
+      const sidePanelInset = new THREE.Mesh(
+        new THREE.BoxGeometry(0.010, totalHeight - 0.28, shelfDepth - 0.095),
+        darkOakMat
+      );
+      sidePanelInset.position.set(sx + (sx < 0 ? -0.015 : 0.015), totalHeight / 2 + 0.02, 0);
+      rackGroup.add(sidePanelInset);
+    }
+
+    // 3) Single clean solid-wood back panel (一整块平整背板，无多余竖条)
+    const backBoard = new THREE.Mesh(
+      new THREE.BoxGeometry(shelfWidth - 0.04, totalHeight - 0.08, 0.018),
+      darkOakMat
+    );
+    backBoard.position.set(0, totalHeight / 2 - 0.01, -halfD + 0.012);
+    backBoard.receiveShadow = true;
+    rackGroup.add(backBoard);
+
+    // 4) Crisp Sharp-Edged Baseboard Plinth & Straight Bracket Feet
+    const basePlinth = new THREE.Mesh(
+      new THREE.BoxGeometry(shelfWidth + 0.042, 0.028, shelfDepth + 0.032),
+      oakMat
+    );
+    basePlinth.position.set(0, 0.074, 0.004);
+    basePlinth.castShadow = true;
+    basePlinth.receiveShadow = true;
+    rackGroup.add(basePlinth);
+
+    for (const fx of [-halfW + 0.025, halfW - 0.025]) {
+      for (const fz of [-halfD + 0.025, halfD - 0.025]) {
+        const foot = new THREE.Mesh(
+          new THREE.BoxGeometry(0.062, 0.060, 0.062),
+          darkOakMat
+        );
+        foot.position.set(fx, 0.030, fz);
+        foot.castShadow = true;
+        rackGroup.add(foot);
+      }
+    }
+
+    // 5) Enclosed Lower Flush Flat-Recessed Shaker Double Doors + Vintage Drop-Ring Pulls!
+    const lowerCabTopY = 0.45;
+    const doorW = (shelfWidth - 0.095) * 0.5;
+    for (const ds of [-1, 1] as const) {
+      const dx = ds * (doorW * 0.5 + 0.003);
+      // Flat recessed inner panel
+      const dBack = new THREE.Mesh(
+        new THREE.BoxGeometry(doorW - 0.004, 0.336, 0.012),
+        darkOakMat
+      );
+      dBack.position.set(dx, 0.27, halfD - 0.010);
+      rackGroup.add(dBack);
+
+      // Flush sharp outer rails & stiles (平整内凹，无凸起中芯块!)
+      for (const ry of [-0.150, 0.150]) {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(doorW, 0.036, 0.018), oakMat);
+        rail.position.set(dx, 0.27 + ry, halfD - 0.005);
+        rackGroup.add(rail);
+      }
+      for (const sx of [-(doorW * 0.5 - 0.018), doorW * 0.5 - 0.018]) {
+        const stile = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.336, 0.018), oakMat);
+        stile.position.set(dx + sx, 0.27, halfD - 0.005);
+        rackGroup.add(stile);
+      }
+
+      // Vintage Drop-Ring Pull rotated to face +Z
+      const ringPull = createAmericanHandle('ring', 1);
+      ringPull.rotation.y = -Math.PI / 2;
+      ringPull.position.set(dx - ds * (doorW * 0.34), 0.30, halfD + 0.004);
+      rackGroup.add(ringPull);
+    }
+
+    // 6) Crisp Flat Open Upper Shelf Tiers + Books & Top Ornaments
+    const openTiers = Math.max(3, numTiers - 1);
+    const tierBoardGeo = new THREE.BoxGeometry(shelfWidth - 0.05, 0.026, shelfDepth - 0.01);
+    const tierGap = (totalHeight - 0.14 - lowerCabTopY) / (openTiers - 1);
+
+    for (let t = 0; t < openTiers; t++) {
+      const tierY = lowerCabTopY + t * tierGap;
       const board = new THREE.Mesh(tierBoardGeo, oakMat);
       board.position.y = tierY;
       board.castShadow = true;
       board.receiveShadow = true;
       rackGroup.add(board);
 
-      // Side bookend rails on each shelf tier
-      for (const sx of [-halfW, halfW]) {
-        const sRail = new THREE.Mesh(sideRailGeo, wainscotTrimMat);
-        sRail.position.set(sx, tierY + 0.036, 0);
-        rackGroup.add(sRail);
-      }
+      // Molded front edge nosing trim along each shelf
+      const nosing = new THREE.Mesh(
+        createBeveledBox(shelfWidth - 0.06, 0.014, 0.016, 0.003, 1),
+        darkOakMat
+      );
+      nosing.position.set(0, tierY - 0.012, halfD - 0.004);
+      rackGroup.add(nosing);
 
-      // Populate lower & middle tiers with naturally varied sculpted light-toned books, manga sets & retro games
-      if (t < numTiers - 1) {
+      if (t < openTiers - 1) {
         populateRealisticBookTier({
           parent: rackGroup,
           axis: 'x',
           spineSign: 1,
-          start: -halfW + 0.026,
-          end: halfW - 0.026,
-          surfaceY: tierY + 0.013,
+          start: -halfW + 0.05,
+          end: halfW - 0.05,
+          surfaceY: tierY + 0.014,
           depthCenter: 0.012,
           maxDepth: shelfDepth * 0.72,
-          maxHeight: tierGap - 0.026,
+          maxHeight: tierGap - 0.032,
           seed: seedOffset * 37 + t * 23,
           includeMangaSet: t === 1,
           includeHorizontalStack: t === 0 || t === 2,
           includeRetroGames: true,
         });
       } else {
-        // Top tier ornament: mini matte ceramic planter pot with succulent, stacked light-toned artbooks & retro cartridge
+        // Top tier ornament: stacked artbooks, retro cartridge & ceramic succulent planter
         const topBook1 = new THREE.Mesh(
           createBookGeometry(0.185, 0.026, 0.142, 6),
           bookAtlasMat
         );
-        topBook1.position.set(-0.085, tierY + 0.026, 0);
+        topBook1.position.set(-0.085, tierY + 0.027, 0);
         topBook1.rotation.y = 0.14;
         topBook1.castShadow = true;
         topBook1.receiveShadow = true;
@@ -4527,7 +8751,7 @@ export function buildLivingRoom(
           createBookGeometry(0.162, 0.022, 0.126, 10),
           bookAtlasMat
         );
-        topBook2.position.set(-0.085, tierY + 0.050, 0.005);
+        topBook2.position.set(-0.085, tierY + 0.051, 0.005);
         topBook2.rotation.y = -0.18;
         topBook2.castShadow = true;
         topBook2.receiveShadow = true;
@@ -4537,7 +8761,7 @@ export function buildLivingRoom(
           createRetroCartridgeGeometry(0.108, 0.015, 0.076),
           retroCartridgeMats[1]
         );
-        topCart.position.set(-0.082, tierY + 0.068, 0.008);
+        topCart.position.set(-0.082, tierY + 0.069, 0.008);
         topCart.rotation.y = 0.28;
         topCart.castShadow = true;
         rackGroup.add(topCart);
@@ -4546,7 +8770,7 @@ export function buildLivingRoom(
           new THREE.CylinderGeometry(0.048, 0.038, 0.068, 14),
           ceramicMat
         );
-        miniPot.position.set(0.10, tierY + 0.047, 0);
+        miniPot.position.set(0.10, tierY + 0.048, 0);
         miniPot.castShadow = true;
         rackGroup.add(miniPot);
 
@@ -4555,7 +8779,7 @@ export function buildLivingRoom(
           plantLeafLightMat
         );
         succulent.scale.set(1.1, 0.72, 1.1);
-        succulent.position.set(0.10, tierY + 0.092, 0);
+        succulent.position.set(0.10, tierY + 0.093, 0);
         rackGroup.add(succulent);
       }
     }
@@ -4564,9 +8788,173 @@ export function buildLivingRoom(
     return rackGroup;
   };
 
-  // 1) 5-Tier Standing Corner Bookshelf in Living Room SE Corner (X = 6.78, Z = -0.68) facing into room
-  buildStandingCornerBookRack(6.78, -0.68, -Math.PI * 0.72, 5, 0.62, 0.32, 1.54, 3);
-  addBoxCollider('col_liv_se_book_rack', 6.78, 0.78, -0.68, 0.64, 1.56, 0.64);
+  // 1) American Solid-Wood Library Bookcase in Living Room SE Corner (X = 6.76, Z = -0.68)
+  buildStandingCornerBookRack(6.76, -0.68, -Math.PI * 0.72, 5, 0.68, 0.34, 1.62, 3);
+  addBoxCollider('col_liv_se_book_rack', 6.76, 0.82, -0.68, 0.68, 1.64, 0.68);
+
+  // =========================================================================
+  // 10C. ASYMMETRIC WARM GOLDEN STAR FAIRY LIGHTS (NO TV-TOP STRIP!)
+  //      (自然非对称暖黄色小星星灯串：沙发后方画廊墙面、西北/东南墙角、单侧窗台与电视柜斜垂)
+  // =========================================================================
+  {
+    const fairyWireMat = mat({ color: 0xb88b48, roughness: 0.35, metalness: 0.65 });
+    const miniStarShape = new THREE.Shape();
+    for (let p = 0; p < 10; p++) {
+      const r = p % 2 === 0 ? 0.019 : 0.008;
+      const a = (p / 10) * Math.PI * 2 + Math.PI / 2;
+      if (p === 0) miniStarShape.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+      else miniStarShape.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    miniStarShape.closePath();
+    const miniStarGeo = new THREE.ExtrudeGeometry(miniStarShape, {
+      depth: 0.005,
+      bevelEnabled: false,
+    });
+    miniStarGeo.center();
+
+    const miniStarMat = new THREE.MeshStandardMaterial({
+      color: 0xfff0b2,
+      emissive: new THREE.Color(0xffd264),
+      emissiveIntensity: 2.9,
+      roughness: 0.2,
+    });
+    const miniHaloGeo = new THREE.SphereGeometry(0.034, 8, 6);
+    const miniHaloMat = new THREE.MeshBasicMaterial({
+      color: 0xffdf84,
+      transparent: true,
+      opacity: 0.22,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+
+    const starEntries: { pos: THREE.Vector3; yaw: number }[] = [];
+
+    // Generalized asymmetric 3D fairy-light strand between arbitrary anchor points with uneven sag loops!
+    const addAsymmetricFairyStrand = (
+      anchors: THREE.Vector3[],
+      sags: number[],
+      starsPerSpan: number[],
+      faceYaw: number
+    ) => {
+      const allPts: THREE.Vector3[] = [];
+      for (let seg = 0; seg < anchors.length - 1; seg++) {
+        const p0 = anchors[seg];
+        const p1 = anchors[seg + 1];
+        const sag = sags[seg] ?? 0.08;
+        const steps = 16;
+        for (let i = seg === 0 ? 0 : 1; i <= steps; i++) {
+          const t = i / steps;
+          const pt = p0.clone().lerp(p1, t);
+          pt.y -= Math.sin(t * Math.PI) * sag;
+          allPts.push(pt);
+        }
+        const count = starsPerSpan[seg] ?? 6;
+        for (let s = 0; s < count; s++) {
+          const t = (s + 0.45 + ((s * 7) % 3) * 0.06) / count;
+          const pt = p0.clone().lerp(p1, Math.min(0.95, t));
+          pt.y -= Math.sin(Math.min(0.95, t) * Math.PI) * sag + 0.013;
+          starEntries.push({ pos: pt, yaw: faceYaw });
+        }
+      }
+      const wire = new THREE.Mesh(
+        createTaperedCurveGeometry(allPts, 0.0022, 0.0022, Math.max(24, allPts.length * 2), 5),
+        fairyWireMat
+      );
+      group.add(wire);
+    };
+
+    // 1) Sofa-Back North Wall Gallery Asymmetric Swag (沙发后方墙面错落斜垂星星灯, Z = -10.27)
+    addAsymmetricFairyStrand(
+      [
+        new THREE.Vector3(0.92, 2.58, -10.27),
+        new THREE.Vector3(2.15, 2.66, -10.27),
+        new THREE.Vector3(3.38, 2.48, -10.27),
+        new THREE.Vector3(4.32, 2.72, -10.27),
+      ],
+      [0.16, 0.11, 0.21],
+      [7, 6, 6],
+      0 // Facing +Z toward living room
+    );
+
+    // 2) NW Corner Diagonal Cozy Swag behind Small Sofa & Vinyl Cabinet (西北墙角斜跨星星灯)
+    addAsymmetricFairyStrand(
+      [
+        new THREE.Vector3(-1.12, 2.42, -8.35),
+        new THREE.Vector3(-1.12, 2.62, -10.18),
+        new THREE.Vector3(0.45, 2.34, -10.26),
+      ],
+      [0.24, 0.17],
+      [8, 7],
+      Math.PI * 0.25
+    );
+
+    // 3) SE Bookcase Corner Casual Diagonal Swag from South Window to American Bookcase Crown (东南墙角)
+    addAsymmetricFairyStrand(
+      [
+        new THREE.Vector3(7.10, 2.36, -2.35),
+        new THREE.Vector3(7.12, 2.08, -1.18),
+        new THREE.Vector3(6.62, 1.66, -0.52),
+      ],
+      [0.18, 0.13],
+      [6, 5],
+      -Math.PI * 0.65
+    );
+
+    // 4) Single Casual Asymmetric Sill Strand on North Window (closest to Christmas tree, NO symmetric twin!)
+    addAsymmetricFairyStrand(
+      [
+        new THREE.Vector3(7.12, 1.02, -7.82),
+        new THREE.Vector3(7.12, 0.94, -7.08),
+        new THREE.Vector3(7.12, 1.06, -6.54),
+      ],
+      [0.09, 0.05],
+      [5, 4],
+      -Math.PI / 2
+    );
+
+    // 5) Off-Center Casual Accent Swag along North-Half of TV Console Lower Edge (NO TV-top strip!)
+    addAsymmetricFairyStrand(
+      [
+        new THREE.Vector3(6.435, 0.575, -6.26),
+        new THREE.Vector3(6.435, 0.562, -5.42),
+        new THREE.Vector3(6.435, 0.570, -4.65),
+      ],
+      [0.075, 0.045],
+      [6, 5],
+      -Math.PI / 2
+    );
+
+    const starsInst = new THREE.InstancedMesh(miniStarGeo, miniStarMat, starEntries.length);
+    const halosInst = new THREE.InstancedMesh(miniHaloGeo, miniHaloMat, starEntries.length);
+    for (let i = 0; i < starEntries.length; i++) {
+      const entry = starEntries[i];
+      _instPos.copy(entry.pos);
+      _instEuler.set(0, entry.yaw, ((i % 5) - 2) * 0.14);
+      _instQuat.setFromEuler(_instEuler);
+      _instScale.setScalar(0.85 + (i % 3) * 0.15);
+      _instMat.compose(_instPos, _instQuat, _instScale);
+      starsInst.setMatrixAt(i, _instMat);
+
+      _instQuat.identity();
+      _instScale.setScalar(0.9 + (i % 3) * 0.16);
+      _instMat.compose(_instPos, _instQuat, _instScale);
+      halosInst.setMatrixAt(i, _instMat);
+    }
+    starsInst.instanceMatrix.needsUpdate = true;
+    starsInst.computeBoundingSphere();
+    halosInst.instanceMatrix.needsUpdate = true;
+    halosInst.computeBoundingSphere();
+    group.add(starsInst, halosInst);
+
+    // Soft warm golden fairy-light PointLights for Sofa-Back Wall & NW Corner
+    const galleryFairyGlow = new THREE.PointLight(0xffd076, 0.72, 3.6, 1.9);
+    galleryFairyGlow.position.set(2.65, 2.35, -9.85);
+    group.add(galleryFairyGlow);
+
+    const nwCornerFairyGlow = new THREE.PointLight(0xffd076, 0.65, 3.2, 1.9);
+    nwCornerFairyGlow.position.set(-0.55, 2.20, -9.55);
+    group.add(nwCornerFairyGlow);
+  }
 
   // 2) MODERN VINYL TURNTABLE MEDIA CABINET + BOOKSHELF BESIDE THE SMALL SOFA
   //    Tucked diagonally flush into NW corner (X = -0.38, Z = -9.72), matching the small sofa orientation (rotation.y = 0.52)!
@@ -5634,8 +10022,8 @@ export function buildLivingRoom(
   const switchPlateMat = mat({ color: 0xfdfaf6, roughness: 0.74, metalness: 0.0 });
   const switchRockerMat = mat({ color: 0xfffdfb, roughness: 0.68, metalness: 0.0 });
 
-  // Shared dynamic luminous diffuser material (swaps milky white plastic OFF <-> warm-white panel glow ON)
-  const chandelierGlowMat = new THREE.MeshBasicMaterial({ color: 0xe8e5df });
+  // Shared dynamic luminous diffuser material (warm-white frosted milk-glass glow — never cold gray!)
+  const chandelierGlowMat = new THREE.MeshBasicMaterial({ color: 0xfff4e2 });
   brightRig.bulbMats.push(chandelierGlowMat);
 
   // Matte-white & soft-satin ABS plastic shell materials for the flat ceiling panel lamp
@@ -5763,49 +10151,104 @@ export function buildLivingRoom(
       fanStaticGroup.add(trimRing);
     }
 
-    // Vintage stepped antique-brass light-kit fitter cup beneath the motor (bottom-to-top Y)
+    // Ornate stepped antique-brass light-kit fitter gallery beneath the motor (bottom-to-top Y)
     const fitterPts = [
-      new THREE.Vector2(0.096, -0.248),
-      new THREE.Vector2(0.108, -0.246),
-      new THREE.Vector2(0.114, -0.228),
+      new THREE.Vector2(0.098, -0.254),
+      new THREE.Vector2(0.118, -0.252),
+      new THREE.Vector2(0.124, -0.238),
+      new THREE.Vector2(0.114, -0.224),
       new THREE.Vector2(0.104, -0.214),
     ];
     const lightFitter = new THREE.Mesh(
-      new THREE.LatheGeometry(fitterPts, 28),
+      new THREE.LatheGeometry(fitterPts, 32),
       antiqueBrassMat
     );
     fanStaticGroup.add(lightFitter);
 
-    // Sculpted vintage frosted milk-glass schoolhouse dome globe (bottom-to-top Y for outward normals)
-    const globePts = [
-      new THREE.Vector2(0.0, -0.369),
-      new THREE.Vector2(0.056, -0.366),
-      new THREE.Vector2(0.122, -0.354),
-      new THREE.Vector2(0.164, -0.328),
-      new THREE.Vector2(0.168, -0.298),
-      new THREE.Vector2(0.138, -0.264),
-      new THREE.Vector2(0.098, -0.242),
-    ];
-    const milkGlassGlobe = new THREE.Mesh(
-      new THREE.LatheGeometry(globePts, 32),
-      chandelierGlowMat
+    // Decorative beaded brass gallery lip ring framing the top of the fluted shade
+    const galleryBeadRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.116, 0.0052, 10, 36),
+      antiqueBrassMat
     );
-    outlines.addOutline(milkGlassGlobe, 1.016);
+    galleryBeadRing.rotation.x = Math.PI / 2;
+    galleryBeadRing.position.y = -0.252;
+    fanStaticGroup.add(galleryBeadRing);
+
+    // Sculpted 16-flute vintage lotus/bell-tulip frosted milk-glass lantern shade (优化复古花瓣棱纹乳白玻璃灯罩)
+    const globePts = [
+      new THREE.Vector2(0.0, -0.402),
+      new THREE.Vector2(0.044, -0.398),
+      new THREE.Vector2(0.102, -0.384),
+      new THREE.Vector2(0.156, -0.354),
+      new THREE.Vector2(0.184, -0.318),
+      new THREE.Vector2(0.172, -0.284),
+      new THREE.Vector2(0.134, -0.264),
+      new THREE.Vector2(0.104, -0.248),
+    ];
+    const flutedShadeGeo = new THREE.LatheGeometry(globePts, 64);
+    const shadePos = flutedShadeGeo.attributes.position;
+    for (let i = 0; i < shadePos.count; i++) {
+      const vx = shadePos.getX(i);
+      const vy = shadePos.getY(i);
+      const vz = shadePos.getZ(i);
+      const r = Math.hypot(vx, vz);
+      if (r > 0.025) {
+        const ang = Math.atan2(vz, vx);
+        // Smooth radial bell-petal flutes strongest around the belly (-0.36 .. -0.27)
+        const bellyT = Math.max(0, Math.min(1, 1 - Math.abs(vy + 0.325) / 0.072));
+        const fluteAmp = 0.0072 * bellyT * bellyT;
+        const nextR = r + Math.cos(ang * 16) * fluteAmp;
+        const scale = nextR / r;
+        shadePos.setX(i, vx * scale);
+        shadePos.setZ(i, vz * scale);
+      }
+    }
+    flutedShadeGeo.computeVertexNormals();
+    const milkGlassGlobe = new THREE.Mesh(flutedShadeGeo, chandelierGlowMat);
+    outlines.addOutline(milkGlassGlobe, 1.015);
     fanStaticGroup.add(milkGlassGlobe);
 
-    // Delicate antique-brass finial button capping the bottom tip of the milk-glass dome
-    const finialBase = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.022, 0.014, 0.012, 16),
+    // Slender antique-brass equatorial accent ring + 4 sculpted lantern ribs cradling the fluted glass shade
+    const waistRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.184, 0.0042, 8, 40),
       antiqueBrassMat
     );
-    finialBase.position.y = -0.371;
-    fanStaticGroup.add(finialBase);
-    const finialKnob = new THREE.Mesh(
-      new THREE.SphereGeometry(0.012, 12, 10),
+    waistRing.rotation.x = Math.PI / 2;
+    waistRing.position.y = -0.318;
+    fanStaticGroup.add(waistRing);
+
+    for (let rIdx = 0; rIdx < 4; rIdx++) {
+      const a = (rIdx / 4) * Math.PI * 2 + Math.PI / 4;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const ribPts = [
+        new THREE.Vector3(ca * 0.114, -0.252, sa * 0.114),
+        new THREE.Vector3(ca * 0.156, -0.276, sa * 0.156),
+        new THREE.Vector3(ca * 0.190, -0.318, sa * 0.190),
+        new THREE.Vector3(ca * 0.158, -0.362, sa * 0.158),
+        new THREE.Vector3(ca * 0.088, -0.392, sa * 0.088),
+        new THREE.Vector3(ca * 0.028, -0.405, sa * 0.028),
+      ];
+      const ribGeo = createTaperedCurveGeometry(ribPts, 0.0036, 0.0030, 14, 6);
+      const ribMesh = new THREE.Mesh(ribGeo, antiqueBrassMat);
+      fanStaticGroup.add(ribMesh);
+    }
+
+    // Stepped vintage lotus-cap antique-brass bottom finial (sculpted turned acorn drop)
+    const finialCapPts = [
+      new THREE.Vector2(0.0, -0.436),
+      new THREE.Vector2(0.011, -0.428),
+      new THREE.Vector2(0.014, -0.418),
+      new THREE.Vector2(0.008, -0.412),
+      new THREE.Vector2(0.024, -0.408),
+      new THREE.Vector2(0.036, -0.400),
+      new THREE.Vector2(0.032, -0.396),
+    ];
+    const finialCap = new THREE.Mesh(
+      new THREE.LatheGeometry(finialCapPts, 20),
       antiqueBrassMat
     );
-    finialKnob.position.y = -0.382;
-    fanStaticGroup.add(finialKnob);
+    fanStaticGroup.add(finialCap);
 
     // Twin delicate vintage brass pull chains with turned walnut teardrop fobs
     for (const [ang, len] of [
@@ -5951,8 +10394,8 @@ export function buildLivingRoom(
 
     ceilingGroup.add(fanRoot);
 
-    // Primary Ceiling Fan-Light Wide-Radius Warm-White PointLight (starts at 0 = OFF)
-    const mainChandelierLight = new THREE.PointLight(0xfff0d6, 0.0, 21.0, 0.66);
+    // Primary Ceiling Fan-Light Wide-Radius Warm-White PointLight (暖白色光源)
+    const mainChandelierLight = new THREE.PointLight(0xfff5e4, 0.0, 21.0, 0.66);
     mainChandelierLight.position.set(3.12, 2.84, -5.08);
     mainChandelierLight.castShadow = false;
     scene.add(mainChandelierLight);
@@ -5992,7 +10435,7 @@ export function buildLivingRoom(
     mergeDynamicSubtreeMeshes(downlight, outlines, `LivingDownlightMerged_${dz}`);
     ceilingGroup.add(downlight);
 
-    const downLightSrc = new THREE.PointLight(0xfff2dc, 0.0, 18.0, 0.70);
+    const downLightSrc = new THREE.PointLight(0xfff5e4, 0.0, 18.0, 0.70);
     downLightSrc.position.set(3.30, 2.94, dz);
     downLightSrc.castShadow = false;
     scene.add(downLightSrc);
@@ -6008,7 +10451,7 @@ export function buildLivingRoom(
       brightRig.lights[i].intensity = nextOn ? (brightRig.baseIntensities[i] ?? 2.4) : 0.0;
     }
     for (let i = 0; i < brightRig.bulbMats.length; i++) {
-      brightRig.bulbMats[i].color.setHex(nextOn ? 0xfff6e5 : 0xe8e5df);
+      brightRig.bulbMats[i].color.setHex(nextOn ? 0xfff9ee : 0xfff4e2);
     }
     for (let i = 0; i < brightRig.switchRockers.length; i++) {
       brightRig.switchRockers[i].rotation.x = nextOn ? -0.22 : 0.22;
@@ -6106,4 +10549,77 @@ export function buildLivingRoom(
   // Merge all static architectural structures (walls, floor, wainscoting) and static
   // furniture in LivingRoom into a single multi-material BufferGeometry!
   mergeStaticGroupToSingleMesh(group, outlines, 'LivingRoomMergedStaticMesh');
+
+  // =========================================================================
+  // 13. REGISTER LIVING ROOM MATERIALS INTO GLOBAL PERSISTENT COLOR STUDIO (F8)
+  // =========================================================================
+  {
+    const redrawCurtains = () => {
+      paintLivingCurtainCanvas();
+      matchaFloralCurtainTex.needsUpdate = true;
+      paintValanceTopBand();
+      valanceTex.needsUpdate = true;
+    };
+
+    apartmentColorStudio.registerCustomControl(
+      'curtainBase',
+      '窗帘底色',
+      'living',
+      'color',
+      curtainPalette.base,
+      (v) => {
+        curtainPalette.base = String(v);
+        redrawCurtains();
+      }
+    );
+    apartmentColorStudio.registerCustomControl(
+      'curtainCheck',
+      '窗帘格纹线色',
+      'living',
+      'color',
+      curtainPalette.check,
+      (v) => {
+        curtainPalette.check = String(v);
+        redrawCurtains();
+      }
+    );
+    apartmentColorStudio.registerCustomControl(
+      'curtainCheckSize',
+      '窗帘格子间距',
+      'living',
+      'range',
+      curtainPalette.checkSize,
+      (v) => {
+        curtainPalette.checkSize = Number(v) || 72;
+        redrawCurtains();
+      },
+      { min: 40, max: 180, step: 4 }
+    );
+
+    apartmentColorStudio.registerMaterialColor('livingWall', '客厅墙面', 'living', livingWallMat);
+    apartmentColorStudio.registerMaterialColor('woodFloor', '客餐厅木地板', 'global', woodFloorMat);
+    apartmentColorStudio.registerMaterialColor('wainscot', '护墙板', 'global', wainscotMat);
+    apartmentColorStudio.registerMaterialColor('doorAndTrim', '门框与墙角框线', 'global', wainscotTrimMat);
+
+    apartmentColorStudio.registerMaterialColor('sofaFabric', '大沙发面料', 'living', [
+      sofaMat,
+      sofaBackTuftMat,
+    ]);
+    apartmentColorStudio.registerMaterialColor('sofaFabric', '大沙发面料', 'living', sofaDarkMat, {
+      multiplier: 0.92,
+    });
+    apartmentColorStudio.registerMaterialColor('tvWood', '电视柜/斗柜主木色', 'living', tvWoodMat);
+    apartmentColorStudio.registerMaterialColor('tvWoodDeep', '电视柜/斗柜深木色', 'living', tvWoodDeepMat);
+    apartmentColorStudio.registerMaterialColor('oakWood', '茶几/角柜木色', 'living', oakMat);
+    apartmentColorStudio.registerMaterialColor('oakWood', '茶几/角柜木色', 'living', darkOakMat, {
+      multiplier: 0.84,
+    });
+    apartmentColorStudio.registerMaterialColor('rugTint', '客厅地毯色调', 'living', rugMat);
+    apartmentColorStudio.registerMaterialColor('pineTint', '圣诞树/花环绿叶', 'living', [
+      pineNeedleMat,
+      wreathPineMat,
+    ]);
+    apartmentColorStudio.registerMaterialColor('tapestryTint', '沙发驯鹿毛毯', 'living', sofaTapestryMat);
+    apartmentColorStudio.registerMaterialColor('glassTint', '餐边柜玻璃色', 'living', cabGlassMat);
+  }
 }

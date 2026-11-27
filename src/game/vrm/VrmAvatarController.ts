@@ -49,6 +49,13 @@ export interface VrmAvatarUpdateParams {
   viewMode: 'first-person' | 'overview';
   thirdPersonPreview: boolean;
   hideAll?: boolean;
+  seatedOnSofa?: boolean;
+  sofaBaseYaw?: number;
+  coPlayMode?: 'none' | 'reaching' | 'holding';
+  coPlayReachProgress?: number;
+  coPlayInputX?: number;
+  coPlayInputY?: number;
+  coPlayActionPulse?: number;
 }
 
 export interface RightHandIkOptions {
@@ -130,6 +137,13 @@ export class VrmAvatarController {
   // Smooth quaternion SLERP facing state (avoids abrupt 180-deg snapping)
   private readonly currentFacingQuat = new THREE.Quaternion();
   private lastFacingYaw = 0;
+  private prevAppliedYaw = 0;
+  private smoothedYawRate = 0;
+  private turnStepPhase = 0;
+  private turnFootworkBlend = 0;
+  private turnDirectionSign = 1;
+  private readonly turnStepEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+  private readonly turnStepQuat = new THREE.Quaternion();
   private facingInitialized = false;
 
   // Right-Arm Analytic Two-Bone IK & Finger Grasp state
@@ -151,6 +165,19 @@ export class VrmAvatarController {
   private blinkElapsed = -1;
   private disposed = false;
 
+  // Seated-on-sofa body pose & smooth controller hand-off state (eliminates floating camera hands)
+  private lastSeatedOnSofa = false;
+  private heldControllerMesh: THREE.Group | null = null;
+  private readonly _padLeftPos = new THREE.Vector3();
+  private readonly _padRightPos = new THREE.Vector3();
+  private readonly _padMidPos = new THREE.Vector3();
+  private sofaLU = new THREE.Vector3(0.36, -0.22, -1.16);
+  private sofaRU = new THREE.Vector3(0.36, 0.22, 1.16);
+  private sofaLL = new THREE.Vector3(-0.06, -0.78, 0);
+  private sofaRL = new THREE.Vector3(0.06, 0.78, 0);
+  private sofaLH = new THREE.Vector3(0.08, 0.08, 0.04);
+  private sofaRH = new THREE.Vector3(0.08, -0.08, -0.04);
+
   constructor(onStatusChange?: (status: VrmAvatarStatusSnapshot) => void) {
     this.onStatusChange = onStatusChange;
     this.root = new THREE.Group();
@@ -169,6 +196,32 @@ export class VrmAvatarController {
 
   public hasVrm(): boolean {
     return this.vrm !== null;
+  }
+
+  public setHeldController(pad: THREE.Group): void {
+    if (this.heldControllerMesh) {
+      this.root.remove(this.heldControllerMesh);
+    }
+    this.heldControllerMesh = pad;
+    pad.visible = false;
+    this.root.add(pad);
+  }
+
+  private computeSofaHipsDropY(): number {
+    // Lower VRM so hips rest naturally on the living room sofa cushion (y ≈ 0.50m)
+    return -(this.vrmHipsHeight - 0.52);
+  }
+
+  private syncHeadVisibilityForPass(mode: 'first-person' | 'overview' | 'mirror' | 'third-person'): void {
+    if (!this.vrm) return;
+    const rawHead = this.vrm.humanoid.getRawBoneNode('head');
+    if (!rawHead) return;
+    const hideHeadInFpSofa = this.lastSeatedOnSofa && mode === 'first-person';
+    if (hideHeadInFpSofa) {
+      rawHead.scale.setScalar(0.0001);
+    } else {
+      rawHead.scale.set(1, 1, 1);
+    }
   }
 
   public spawnHeroineOnBedroomBed(): void {
@@ -658,6 +711,20 @@ export class VrmAvatarController {
     this.renderPassMode = mode;
     if (!this.vrm) return;
 
+    this.syncHeadVisibilityForPass(mode);
+
+    if (this.lastSeatedOnSofa) {
+      const dropY = this.computeSofaHipsDropY();
+      this.avatarHolder.visible = true;
+      if (mode === 'first-person') {
+        // Keep headless seated body visible and slightly back so chest/arms/legs frame naturally
+        this.avatarHolder.position.set(0, dropY, -0.18);
+      } else {
+        this.avatarHolder.position.set(0, dropY, 0);
+      }
+      return;
+    }
+
     if (mode === 'first-person') {
       // Keep headless avatar out of normal forward gaze to avoid camera clipping
       this.avatarHolder.position.set(0, 0, -0.22);
@@ -722,15 +789,31 @@ export class VrmAvatarController {
   public update(dt: number, elapsed: number, params: VrmAvatarUpdateParams): void {
     if (!this.vrm) {
       this.root.visible = false;
+      if (this.heldControllerMesh) this.heldControllerMesh.visible = false;
       return;
     }
 
     const safeDt = Math.min(dt, 0.05);
     this.lastPitch = params.pitch;
+    const isSeatedOnSofa = Boolean(params.seatedOnSofa);
+    this.lastSeatedOnSofa = isSeatedOnSofa;
     this.root.visible = !params.hideAll;
-    if (params.hideAll) return;
+    if (params.hideAll) {
+      if (this.heldControllerMesh) this.heldControllerMesh.visible = false;
+      return;
+    }
 
     this.root.position.copy(params.feetPos);
+
+    if (isSeatedOnSofa) {
+      this.updateSeatedOnSofa(safeDt, elapsed, params);
+      return;
+    }
+
+    if (this.heldControllerMesh) {
+      this.heldControllerMesh.visible = false;
+    }
+    this.syncHeadVisibilityForPass(this.renderPassMode);
 
     // Measure actual ground speed (prevents foot sliding when accelerating, decelerating, or pushing walls)
     const rawGroundSpeed =
@@ -810,15 +893,27 @@ export class VrmAvatarController {
     }
 
     _targetFacingQuat.setFromAxisAngle(_upAxis, desiredYaw);
+    let actualYawRate = 0;
     if (!this.facingInitialized) {
       this.currentFacingQuat.copy(_targetFacingQuat);
       this.lastFacingYaw = desiredYaw;
+      this.prevAppliedYaw = desiredYaw;
       this.facingInitialized = true;
     } else {
       const slerpAlpha = 1 - Math.exp(-turnLambda * safeDt);
       this.currentFacingQuat.slerp(_targetFacingQuat, slerpAlpha);
       this.lastFacingYaw = desiredYaw;
+      // Compute true applied yaw rate for natural in-place pivot-stepping footwork
+      const curYaw = Math.atan2(
+        2 * (this.currentFacingQuat.w * this.currentFacingQuat.y + this.currentFacingQuat.x * this.currentFacingQuat.z),
+        1 - 2 * (this.currentFacingQuat.y * this.currentFacingQuat.y + this.currentFacingQuat.z * this.currentFacingQuat.z)
+      );
+      let yawDelta = ((curYaw - this.prevAppliedYaw + Math.PI) % (Math.PI * 2)) - Math.PI;
+      if (yawDelta < -Math.PI) yawDelta += Math.PI * 2;
+      actualYawRate = yawDelta / Math.max(safeDt, 0.001);
+      this.prevAppliedYaw = curYaw;
     }
+    this.smoothedYawRate = THREE.MathUtils.damp(this.smoothedYawRate, actualYawRate, 12.0, safeDt);
     this.root.quaternion.copy(this.currentFacingQuat);
 
     // Sync first-person / third-person / overview visibility
@@ -923,6 +1018,51 @@ export class VrmAvatarController {
     }
 
     // -------------------------------------------------------------------------
+    // 2B. Natural Turn-In-Place Pivot Footwork (原地转身时腿脚交替踩步与重心微移!)
+    // -------------------------------------------------------------------------
+    const absYawRate = Math.abs(this.smoothedYawRate);
+    if (!isActuallyMoving && absYawRate > 0.14) {
+      this.turnDirectionSign = this.smoothedYawRate >= 0 ? 1 : -1;
+      this.turnFootworkBlend = THREE.MathUtils.damp(this.turnFootworkBlend, 1.0, 10.5, safeDt);
+      this.turnStepPhase += safeDt * (5.6 + Math.min(3.8, absYawRate) * 1.25);
+    } else {
+      this.turnFootworkBlend = THREE.MathUtils.damp(this.turnFootworkBlend, 0.0, 9.0, safeDt);
+      if (this.turnFootworkBlend < 0.005) this.turnFootworkBlend = 0;
+    }
+    if (this.turnFootworkBlend > 0.005) {
+      const b = this.turnFootworkBlend;
+      const isVrm1 = this.vrm.meta?.metaVersion === '1';
+      const s = isVrm1 ? -1 : 1;
+      const dir = this.turnDirectionSign;
+      const sinP = Math.sin(this.turnStepPhase);
+      const leftLift = Math.max(0, sinP) * b;
+      const rightLift = Math.max(0, -sinP) * b;
+
+      const mulBone = (boneName: 'hips' | 'spine' | 'leftUpperLeg' | 'leftLowerLeg' | 'leftFoot' | 'rightUpperLeg' | 'rightLowerLeg' | 'rightFoot' | 'leftUpperArm' | 'rightUpperArm', rx: number, ry: number, rz: number) => {
+        const node = this.vrm?.humanoid.getNormalizedBoneNode(boneName);
+        if (!node) return;
+        this.turnStepEuler.set(rx * s, ry, rz * s, 'YXZ');
+        this.turnStepQuat.setFromEuler(this.turnStepEuler);
+        node.quaternion.multiply(this.turnStepQuat);
+      };
+
+      // Subtle hip weight shift + torso follow-through + gentle arm counter-balance
+      mulBone('hips', 0.018 * b, -dir * 0.04 * b, sinP * 0.032 * b);
+      mulBone('spine', 0, dir * 0.065 * b, -sinP * 0.018 * b);
+      mulBone('leftUpperArm', -0.06 * rightLift, 0, 0);
+      mulBone('rightUpperArm', -0.06 * leftLift, 0, 0);
+
+      // Alternating stepping legs: lift thigh, flex knee, and pivot ankle/toe into the turn!
+      mulBone('leftUpperLeg', -0.18 * leftLift, dir * 0.16 * leftLift, -0.025 * leftLift);
+      mulBone('leftLowerLeg', 0.34 * leftLift, 0, 0);
+      mulBone('leftFoot', -0.17 * leftLift, dir * 0.18 * leftLift, 0);
+
+      mulBone('rightUpperLeg', -0.18 * rightLift, dir * 0.16 * rightLift, 0.025 * rightLift);
+      mulBone('rightLowerLeg', 0.34 * rightLift, 0, 0);
+      mulBone('rightFoot', -0.17 * rightLift, dir * 0.18 * rightLift, 0);
+    }
+
+    // -------------------------------------------------------------------------
     // 3. STEP B: Analytic Two-Bone IK & Finger Grasp Override AFTER mixer.update
     // -------------------------------------------------------------------------
     if (this.rightHandIkHasTarget && this.rightHandIkWeight > 1e-4) {
@@ -982,6 +1122,224 @@ export class VrmAvatarController {
     // 4. STEP C: VRM Update LAST (copies normalized bones incl. IK -> raw bones + SpringBones)
     // -------------------------------------------------------------------------
     this.vrm.update(safeDt);
+  }
+
+  private updateSeatedOnSofa(
+    safeDt: number,
+    elapsed: number,
+    params: VrmAvatarUpdateParams
+  ): void {
+    const vrm = this.vrm;
+    if (!vrm) return;
+
+    const s = vrm.meta?.metaVersion === '0' ? -1 : 1;
+    const baseYaw = params.sofaBaseYaw ?? params.yaw;
+    const sofaFacingYaw = baseYaw + Math.PI;
+    this.currentFacingQuat.setFromAxisAngle(_upAxis, sofaFacingYaw);
+    this.lastFacingYaw = sofaFacingYaw;
+    this.facingInitialized = true;
+    this.root.quaternion.copy(this.currentFacingQuat);
+
+    const dropY = this.computeSofaHipsDropY();
+    this.avatarHolder.visible = true;
+    if (params.viewMode === 'overview' || params.thirdPersonPreview || this.renderPassMode !== 'first-person') {
+      this.avatarHolder.position.set(0, dropY, 0);
+    } else {
+      this.avatarHolder.position.set(0, dropY, -0.18);
+    }
+
+    let relYaw = params.yaw - baseYaw;
+    while (relYaw > Math.PI) relYaw -= Math.PI * 2;
+    while (relYaw < -Math.PI) relYaw += Math.PI * 2;
+
+    vrm.humanoid.resetNormalizedPose();
+
+    const setBone = (
+      boneName: Parameters<typeof vrm.humanoid.getNormalizedBoneNode>[0],
+      rx: number,
+      ry: number,
+      rz: number,
+      order: THREE.EulerOrder = 'YXZ'
+    ) => {
+      const node = vrm.humanoid.getNormalizedBoneNode(boneName);
+      if (!node) return;
+      node.rotation.order = order;
+      node.rotation.set(rx * s, ry, rz * s);
+    };
+
+    const breath = Math.sin(elapsed * 1.45);
+    const torsoTurn = THREE.MathUtils.clamp(relYaw * 0.20, -0.24, 0.24);
+
+    // 1. Torso & Seated Legs (thighs flush on cushion, shins vertical)
+    setBone('spine', -0.05 + breath * 0.008, torsoTurn * 0.45, 0, 'YXZ');
+    setBone('chest', -0.03 + breath * 0.012, torsoTurn * 0.55, 0, 'YXZ');
+    setBone('leftUpperLeg', -1.46, -0.06, -0.04, 'YXZ');
+    setBone('rightUpperLeg', -1.46, 0.06, 0.04, 'YXZ');
+    setBone('leftLowerLeg', 1.48, 0, 0, 'YXZ');
+    setBone('rightLowerLeg', 1.48, 0, 0, 'YXZ');
+    setBone('leftFoot', 0.04, 0, 0, 'YXZ');
+    setBone('rightFoot', 0.04, 0, 0, 'YXZ');
+
+    // 2. Smooth continuous arm poses across: lap rest ('none') -> reaching -> holding controller
+    const coPlayMode = params.coPlayMode ?? 'none';
+    const reachP = THREE.MathUtils.clamp(params.coPlayReachProgress ?? 0, 0, 1);
+    const inX = THREE.MathUtils.clamp(params.coPlayInputX ?? 0, -1, 1);
+    const inY = THREE.MathUtils.clamp(params.coPlayInputY ?? 0, -1, 1);
+    const pulse = THREE.MathUtils.clamp(params.coPlayActionPulse ?? 0, 0, 1.2);
+
+    // Default relaxed lap-rest targets
+    let tLUx = 0.34 + breath * 0.01;
+    let tLUy = -0.20;
+    let tLUz = -1.16;
+    let tLLx = -0.06;
+    let tLLy = -0.78;
+    let tLLz = 0;
+    let tLHx = 0.08;
+    let tLHy = 0.08;
+    let tLHz = 0.04;
+
+    let tRUx = 0.34 + breath * 0.01;
+    let tRUy = 0.20;
+    let tRUz = 1.16;
+    let tRLx = 0.06;
+    let tRLy = 0.78;
+    let tRLz = 0;
+    let tRHx = 0.08;
+    let tRHy = -0.08;
+    let tRHz = -0.04;
+
+    let showController = false;
+
+    if (coPlayMode === 'reaching') {
+      if (reachP < 0.54) {
+        const raw = reachP / 0.54;
+        const ext = raw * raw * (3 - 2 * raw);
+        // Heroine sits on protagonist's left (-Z = +X local): left arm smoothly reaches from lap to take white pad
+        tLUx = THREE.MathUtils.lerp(0.34, -0.76, ext);
+        tLUy = THREE.MathUtils.lerp(-0.20, -0.32, ext);
+        tLUz = THREE.MathUtils.lerp(-1.16, -0.84, ext);
+        tLLx = THREE.MathUtils.lerp(-0.06, -0.04, ext);
+        tLLy = THREE.MathUtils.lerp(-0.78, -0.42, ext);
+        tLHx = THREE.MathUtils.lerp(0.08, 0.12, ext);
+
+        // Right arm gently lifts slightly ready to receive controller with both hands
+        tRUx = THREE.MathUtils.lerp(0.34, 0.40, ext);
+        tRUy = THREE.MathUtils.lerp(0.20, 0.36, ext);
+        tRUz = THREE.MathUtils.lerp(1.16, 1.08, ext);
+        tRLy = THREE.MathUtils.lerp(0.78, 1.08, ext);
+      } else {
+        showController = true;
+        const pull = (reachP - 0.54) / 0.46;
+        const smoothPull = pull * pull * (3 - 2 * pull);
+        tLUx = THREE.MathUtils.lerp(-0.76, 0.42, smoothPull);
+        tLUy = THREE.MathUtils.lerp(-0.32, -0.46, smoothPull);
+        tLUz = THREE.MathUtils.lerp(-0.84, -1.04, smoothPull);
+        tLLx = THREE.MathUtils.lerp(-0.04, -0.08, smoothPull);
+        tLLy = THREE.MathUtils.lerp(-0.42, -1.34, smoothPull);
+        tLHx = THREE.MathUtils.lerp(0.12, 0.14, smoothPull);
+        tLHy = THREE.MathUtils.lerp(0.08, 0.16, smoothPull);
+        tLHz = THREE.MathUtils.lerp(0.04, 0.12, smoothPull);
+
+        tRUx = THREE.MathUtils.lerp(0.40, 0.42, smoothPull);
+        tRUy = THREE.MathUtils.lerp(0.36, 0.46, smoothPull);
+        tRUz = THREE.MathUtils.lerp(1.08, 1.04, smoothPull);
+        tRLx = THREE.MathUtils.lerp(0.06, 0.08, smoothPull);
+        tRLy = THREE.MathUtils.lerp(1.08, 1.34, smoothPull);
+        tRHx = THREE.MathUtils.lerp(0.08, 0.14, smoothPull);
+        tRHy = THREE.MathUtils.lerp(-0.08, -0.16, smoothPull);
+        tRHz = THREE.MathUtils.lerp(-0.04, -0.12, smoothPull);
+      }
+    } else if (coPlayMode === 'holding') {
+      showController = true;
+      const tilt = inX * 0.05 + pulse * 0.08;
+      tLUx = 0.42 - inY * 0.03 + tilt * 0.35 + breath * 0.01;
+      tLUy = -0.46;
+      tLUz = -1.04;
+      tLLx = -0.08;
+      tLLy = -1.34 + tilt * 0.22;
+      tLHx = 0.14;
+      tLHy = 0.16;
+      tLHz = 0.12;
+
+      tRUx = 0.42 - inY * 0.03 - tilt * 0.35 + breath * 0.01;
+      tRUy = 0.46;
+      tRUz = 1.04;
+      tRLx = 0.08;
+      tRLy = 1.34 - tilt * 0.22;
+      tRHx = 0.14;
+      tRHy = -0.16;
+      tRHz = -0.12;
+    }
+
+    const armDamp = 8.5;
+    this.sofaLU.set(
+      THREE.MathUtils.damp(this.sofaLU.x, tLUx, armDamp, safeDt),
+      THREE.MathUtils.damp(this.sofaLU.y, tLUy, armDamp, safeDt),
+      THREE.MathUtils.damp(this.sofaLU.z, tLUz, armDamp, safeDt)
+    );
+    this.sofaRU.set(
+      THREE.MathUtils.damp(this.sofaRU.x, tRUx, armDamp, safeDt),
+      THREE.MathUtils.damp(this.sofaRU.y, tRUy, armDamp, safeDt),
+      THREE.MathUtils.damp(this.sofaRU.z, tRUz, armDamp, safeDt)
+    );
+    this.sofaLL.set(
+      THREE.MathUtils.damp(this.sofaLL.x, tLLx, armDamp, safeDt),
+      THREE.MathUtils.damp(this.sofaLL.y, tLLy, armDamp, safeDt),
+      THREE.MathUtils.damp(this.sofaLL.z, tLLz, armDamp, safeDt)
+    );
+    this.sofaRL.set(
+      THREE.MathUtils.damp(this.sofaRL.x, tRLx, armDamp, safeDt),
+      THREE.MathUtils.damp(this.sofaRL.y, tRLy, armDamp, safeDt),
+      THREE.MathUtils.damp(this.sofaRL.z, tRLz, armDamp, safeDt)
+    );
+    this.sofaLH.set(
+      THREE.MathUtils.damp(this.sofaLH.x, tLHx, armDamp, safeDt),
+      THREE.MathUtils.damp(this.sofaLH.y, tLHy, armDamp, safeDt),
+      THREE.MathUtils.damp(this.sofaLH.z, tLHz, armDamp, safeDt)
+    );
+    this.sofaRH.set(
+      THREE.MathUtils.damp(this.sofaRH.x, tRHx, armDamp, safeDt),
+      THREE.MathUtils.damp(this.sofaRH.y, tRHy, armDamp, safeDt),
+      THREE.MathUtils.damp(this.sofaRH.z, tRHz, armDamp, safeDt)
+    );
+
+    setBone('leftShoulder', 0.02, 0.04, -0.02, 'YXZ');
+    setBone('rightShoulder', 0.02, -0.04, 0.02, 'YXZ');
+    setBone('leftUpperArm', this.sofaLU.x, this.sofaLU.y, this.sofaLU.z, 'ZYX');
+    setBone('rightUpperArm', this.sofaRU.x, this.sofaRU.y, this.sofaRU.z, 'ZYX');
+    setBone('leftLowerArm', this.sofaLL.x, this.sofaLL.y, this.sofaLL.z, 'YXZ');
+    setBone('rightLowerArm', this.sofaRL.x, this.sofaRL.y, this.sofaRL.z, 'YXZ');
+    setBone('leftHand', this.sofaLH.x, this.sofaLH.y, this.sofaLH.z, 'XYZ');
+    setBone('rightHand', this.sofaRH.x, this.sofaRH.y, this.sofaRH.z, 'XYZ');
+
+    vrm.update(safeDt);
+    this.syncHeadVisibilityForPass(this.renderPassMode);
+
+    // 3. Position real white Xbox controller right between the VRM's seated hands
+    if (this.heldControllerMesh) {
+      const lHand = vrm.humanoid.getRawBoneNode('leftHand');
+      const rHand = vrm.humanoid.getRawBoneNode('rightHand');
+      if (showController && lHand && rHand) {
+        this.root.updateMatrixWorld(true);
+        lHand.getWorldPosition(this._padLeftPos);
+        rHand.getWorldPosition(this._padRightPos);
+        this._padMidPos.addVectors(this._padLeftPos, this._padRightPos).multiplyScalar(0.5);
+        this.root.worldToLocal(this._padMidPos);
+        this.heldControllerMesh.visible = true;
+        this.heldControllerMesh.position.set(
+          this._padMidPos.x,
+          this._padMidPos.y - 0.012,
+          this._padMidPos.z + 0.02
+        );
+        this.heldControllerMesh.rotation.set(
+          -0.46 - inY * 0.06 + pulse * 0.08,
+          Math.PI,
+          -inX * 0.08
+        );
+      } else {
+        this.heldControllerMesh.visible = false;
+      }
+    }
   }
 
   private disposeCurrentVrm(): void {

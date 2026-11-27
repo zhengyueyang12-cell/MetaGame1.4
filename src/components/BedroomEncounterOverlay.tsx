@@ -1,5 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react';
 import type { EncounterChoice } from '../data/bedroomEncounterScript';
+import type { SofaMenuOptionId } from '../game/ApartmentEngine';
 import type {
   TvConsoleScreenMode,
   TvGameSelectionId,
@@ -58,6 +59,7 @@ interface BedroomEncounterOverlayProps {
   coPlayPhase?: 'none' | 'fetching' | 'playing';
   tvScreenMode?: TvConsoleScreenMode;
   selectedTvGame?: TvGameSelectionId;
+  activeSofaOption?: SofaMenuOptionId;
   onStartEncounter: () => void;
   onAdvanceLine: () => void;
   onSelectChoice: (choice: EncounterChoice) => void;
@@ -99,6 +101,7 @@ export const BedroomEncounterOverlay = forwardRef<
     coPlayPhase = 'none',
     tvScreenMode = 'launcher',
     selectedTvGame = 'snowball',
+    activeSofaOption = 'play_game',
     onStartEncounter,
     onAdvanceLine,
     onSelectChoice,
@@ -299,236 +302,306 @@ export const BedroomEncounterOverlay = forwardRef<
         </div>
       )}
 
-      {/* 1b. Minimalist floating Sofa Co-Sitting action strip (pure pink-purple outlined text, zero card/box) */}
+      {/* 1b. Minimalist floating Sofa Co-Sitting action strip (wheel to select, F to confirm — zero scattered keys!) */}
       {sofaCoSeated && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 flex flex-wrap items-center justify-center gap-5 max-w-[92vw] pointer-events-auto">
-          {coPlayPhase === 'none' && (
-            <>
-              {mode === 'hidden' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onStartSofaCoPlay?.();
-                    }}
-                    className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
+        <div className="fixed bottom-9 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 max-w-[92vw] pointer-events-auto">
+          <div className="flex flex-wrap items-center justify-center gap-5">
+            {coPlayPhase === 'none' && (
+              <>
+                {mode === 'hidden' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStartSofaCoPlay?.();
+                      }}
+                      className={`group relative flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 ${
+                        activeSofaOption === 'play_game' ? '-translate-y-0.5 scale-105' : 'opacity-80 hover:-translate-y-0.5 hover:opacity-100'
+                      }`}
+                    >
+                      <span
+                        className={`text-[16px] tracking-[0.08em] ${
+                          activeSofaOption === 'play_game' ? 'text-[#aef6ff]' : 'text-[#ffe0f7] group-hover:text-[#ffd8f8]'
+                        }`}
+                        style={PINK_PURPLE_OUTLINE_STYLE}
+                      >
+                        一起打游戏
+                      </span>
+                      {activeSofaOption === 'play_game' && (
+                        <span className="text-[12px] text-[#aef6ff]" style={PINK_PURPLE_OUTLINE_STYLE}>
+                          [F]
+                        </span>
+                      )}
+                      {activeSofaOption === 'play_game' && (
+                        <span className="pointer-events-none absolute left-0 right-0 -bottom-0.5 h-[2px] bg-gradient-to-r from-transparent via-[#8ceeff] to-transparent" />
+                      )}
+                    </button>
+                    <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSofaChat?.();
+                      }}
+                      className={`group relative flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 ${
+                        activeSofaOption === 'chat' ? '-translate-y-0.5 scale-105' : 'opacity-80 hover:-translate-y-0.5 hover:opacity-100'
+                      }`}
+                    >
+                      <span
+                        className={`text-[16px] tracking-[0.08em] ${
+                          activeSofaOption === 'chat' ? 'text-[#ffd8fb]' : 'text-[#ffe0f7] group-hover:text-[#ecc4ff]'
+                        }`}
+                        style={PINK_PURPLE_OUTLINE_STYLE}
+                      >
+                        和她聊聊
+                      </span>
+                      {activeSofaOption === 'chat' && (
+                        <span className="text-[12px] text-[#ffd8fb]" style={PINK_PURPLE_OUTLINE_STYLE}>
+                          [F]
+                        </span>
+                      )}
+                      {activeSofaOption === 'chat' && (
+                        <span className="pointer-events-none absolute left-0 right-0 -bottom-0.5 h-[2px] bg-gradient-to-r from-transparent via-[#ffb8f5] to-transparent" />
+                      )}
+                    </button>
+                    <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleLivingTv?.();
+                  }}
+                  className={`group relative flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 ${
+                    activeSofaOption === 'toggle_tv' ? '-translate-y-0.5 scale-105' : 'opacity-80 hover:-translate-y-0.5 hover:opacity-100'
+                  }`}
+                >
+                  <span
+                    className={`text-[16px] tracking-[0.08em] ${
+                      activeSofaOption === 'toggle_tv' ? 'text-[#ffd8fb]' : 'text-[#ffe0f7] group-hover:text-[#ecc4ff]'
+                    }`}
+                    style={PINK_PURPLE_OUTLINE_STYLE}
                   >
-                    <span
-                      className="text-[16px] tracking-[0.08em] text-[#aef6ff] group-hover:text-[#ffd8f8]"
-                      style={PINK_PURPLE_OUTLINE_STYLE}
-                    >
-                      一起打游戏
-                    </span>
-                    <span
-                      className="text-[12px] text-[#e7aaff]"
-                      style={PINK_PURPLE_OUTLINE_STYLE}
-                    >
-                      [G]
-                    </span>
-                  </button>
-                  <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSofaChat?.();
-                    }}
-                    className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
-                  >
-                    <span
-                      className="text-[16px] tracking-[0.08em] text-[#ffe0f7] group-hover:text-[#ecc4ff]"
-                      style={PINK_PURPLE_OUTLINE_STYLE}
-                    >
-                      和她聊聊
-                    </span>
-                    <span
-                      className="text-[12px] text-[#e7aaff]"
-                      style={PINK_PURPLE_OUTLINE_STYLE}
-                    >
+                    {livingTvOn ? '关掉电视' : '打开电视'}
+                  </span>
+                  {activeSofaOption === 'toggle_tv' && (
+                    <span className="text-[12px] text-[#ffd8fb]" style={PINK_PURPLE_OUTLINE_STYLE}>
                       [F]
                     </span>
-                  </button>
-                  <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
-                </>
-              )}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleLivingTv?.();
-                }}
-                className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
-              >
-                <span
-                  className="text-[16px] tracking-[0.08em] text-[#ffe0f7] group-hover:text-[#ecc4ff]"
-                  style={PINK_PURPLE_OUTLINE_STYLE}
-                >
-                  {livingTvOn ? '关掉电视' : '打开电视'}
-                </span>
-                <span
-                  className="text-[12px] text-[#e7aaff]"
-                  style={PINK_PURPLE_OUTLINE_STYLE}
-                >
-                  [T]
-                </span>
-              </button>
-              {livingTvOn && (
-                <>
-                  <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSwitchLivingTvChannel?.();
-                    }}
-                    className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
-                  >
-                    <span
-                      className="text-[16px] tracking-[0.08em] text-[#ffe0f7] group-hover:text-[#ecc4ff]"
-                      style={PINK_PURPLE_OUTLINE_STYLE}
+                  )}
+                  {activeSofaOption === 'toggle_tv' && (
+                    <span className="pointer-events-none absolute left-0 right-0 -bottom-0.5 h-[2px] bg-gradient-to-r from-transparent via-[#ffb8f5] to-transparent" />
+                  )}
+                </button>
+                {livingTvOn && (
+                  <>
+                    <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSwitchLivingTvChannel?.();
+                      }}
+                      className={`group relative flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 ${
+                        activeSofaOption === 'switch_channel' ? '-translate-y-0.5 scale-105' : 'opacity-80 hover:-translate-y-0.5 hover:opacity-100'
+                      }`}
                     >
-                      换台
-                    </span>
-                    <span
-                      className="text-[12px] text-[#e7aaff]"
-                      style={PINK_PURPLE_OUTLINE_STYLE}
-                    >
-                      [C]
-                    </span>
-                  </button>
-                </>
-              )}
-            </>
-          )}
+                      <span
+                        className={`text-[16px] tracking-[0.08em] ${
+                          activeSofaOption === 'switch_channel' ? 'text-[#ffd8fb]' : 'text-[#ffe0f7] group-hover:text-[#ecc4ff]'
+                        }`}
+                        style={PINK_PURPLE_OUTLINE_STYLE}
+                      >
+                        换台
+                      </span>
+                      {activeSofaOption === 'switch_channel' && (
+                        <span className="text-[12px] text-[#ffd8fb]" style={PINK_PURPLE_OUTLINE_STYLE}>
+                          [F]
+                        </span>
+                      )}
+                      {activeSofaOption === 'switch_channel' && (
+                        <span className="pointer-events-none absolute left-0 right-0 -bottom-0.5 h-[2px] bg-gradient-to-r from-transparent via-[#ffb8f5] to-transparent" />
+                      )}
+                    </button>
+                  </>
+                )}
+              </>
+            )}
 
-          {coPlayPhase === 'fetching' && (
-            <span
-              className="text-[15.5px] tracking-[0.09em] text-[#ffdcf5]"
-              style={PINK_PURPLE_OUTLINE_STYLE}
-            >
-              她正在茶几取来两只手柄……
-            </span>
-          )}
-
-          {coPlayPhase === 'playing' && (
-            <>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelectTvGame?.('snowball');
-                }}
-                className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
-              >
-                <span
-                  className={`text-[16px] tracking-[0.08em] ${
-                    tvScreenMode === 'snowball' ||
-                    (tvScreenMode === 'launcher' && selectedTvGame === 'snowball')
-                      ? 'text-[#7cebff]'
-                      : 'text-[#ffe0f7] group-hover:text-[#aef6ff]'
-                  }`}
-                  style={PINK_PURPLE_OUTLINE_STYLE}
-                >
-                  ① 双人打雪仗
-                </span>
-              </button>
-              <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelectTvGame?.('tank');
-                }}
-                className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
-              >
-                <span
-                  className={`text-[16px] tracking-[0.08em] ${
-                    tvScreenMode === 'tank' ||
-                    (tvScreenMode === 'launcher' && selectedTvGame === 'tank')
-                      ? 'text-[#ffca7a]'
-                      : 'text-[#ffe0f7] group-hover:text-[#ffdca8]'
-                  }`}
-                  style={PINK_PURPLE_OUTLINE_STYLE}
-                >
-                  ② 坦克大战
-                </span>
-              </button>
-              {tvScreenMode !== 'launcher' && (
-                <>
-                  <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onReturnTvLauncher?.();
-                    }}
-                    className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
-                  >
-                    <span
-                      className="text-[15px] tracking-[0.08em] text-[#ffe0f7] group-hover:text-[#ecc4ff]"
-                      style={PINK_PURPLE_OUTLINE_STYLE}
-                    >
-                      游戏选单
-                    </span>
-                    <span
-                      className="text-[12px] text-[#e7aaff]"
-                      style={PINK_PURPLE_OUTLINE_STYLE}
-                    >
-                      [M]
-                    </span>
-                  </button>
-                </>
-              )}
-              <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onStopSofaCoPlay?.();
-                }}
-                className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
-              >
-                <span
-                  className="text-[15px] tracking-[0.08em] text-[#ffe0f7] group-hover:text-[#ecc4ff]"
-                  style={PINK_PURPLE_OUTLINE_STYLE}
-                >
-                  放回手柄
-                </span>
-                <span
-                  className="text-[12px] text-[#e7aaff]"
-                  style={PINK_PURPLE_OUTLINE_STYLE}
-                >
-                  [Esc]
-                </span>
-              </button>
-            </>
-          )}
-
-          <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onStandUpSofa?.();
-            }}
-            className="group flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 hover:-translate-y-0.5"
-          >
-            <span
-              className="text-[16px] tracking-[0.08em] text-[#ffe0f7] group-hover:text-[#ecc4ff]"
-              style={PINK_PURPLE_OUTLINE_STYLE}
-            >
-              起身离开
-            </span>
-            {coPlayPhase === 'none' && (
+            {coPlayPhase === 'fetching' && (
               <span
-                className="text-[12px] text-[#e7aaff]"
+                className="text-[15.5px] tracking-[0.09em] text-[#ffdcf5]"
                 style={PINK_PURPLE_OUTLINE_STYLE}
               >
-                [E / Space]
+                她正在茶几取来两只手柄……
               </span>
             )}
-          </button>
+
+            {coPlayPhase === 'playing' && (
+              <>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectTvGame?.('snowball');
+                  }}
+                  className={`group relative flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 ${
+                    activeSofaOption === 'snowball' ? '-translate-y-0.5 scale-105' : 'opacity-80 hover:-translate-y-0.5 hover:opacity-100'
+                  }`}
+                >
+                  <span
+                    className={`text-[16px] tracking-[0.08em] ${
+                      activeSofaOption === 'snowball' ||
+                      tvScreenMode === 'snowball' ||
+                      (tvScreenMode === 'launcher' && selectedTvGame === 'snowball')
+                        ? 'text-[#7cebff]'
+                        : 'text-[#ffe0f7] group-hover:text-[#aef6ff]'
+                    }`}
+                    style={PINK_PURPLE_OUTLINE_STYLE}
+                  >
+                    ① 双人打雪仗
+                  </span>
+                  {activeSofaOption === 'snowball' && (
+                    <span className="text-[12px] text-[#7cebff]" style={PINK_PURPLE_OUTLINE_STYLE}>
+                      [F]
+                    </span>
+                  )}
+                  {activeSofaOption === 'snowball' && (
+                    <span className="pointer-events-none absolute left-0 right-0 -bottom-0.5 h-[2px] bg-gradient-to-r from-transparent via-[#7cebff] to-transparent" />
+                  )}
+                </button>
+                <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectTvGame?.('tank');
+                  }}
+                  className={`group relative flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 ${
+                    activeSofaOption === 'tank' ? '-translate-y-0.5 scale-105' : 'opacity-80 hover:-translate-y-0.5 hover:opacity-100'
+                  }`}
+                >
+                  <span
+                    className={`text-[16px] tracking-[0.08em] ${
+                      activeSofaOption === 'tank' ||
+                      tvScreenMode === 'tank' ||
+                      (tvScreenMode === 'launcher' && selectedTvGame === 'tank')
+                        ? 'text-[#ffca7a]'
+                        : 'text-[#ffe0f7] group-hover:text-[#ffdca8]'
+                    }`}
+                    style={PINK_PURPLE_OUTLINE_STYLE}
+                  >
+                    ② 坦克大战
+                  </span>
+                  {activeSofaOption === 'tank' && (
+                    <span className="text-[12px] text-[#ffca7a]" style={PINK_PURPLE_OUTLINE_STYLE}>
+                      [F]
+                    </span>
+                  )}
+                  {activeSofaOption === 'tank' && (
+                    <span className="pointer-events-none absolute left-0 right-0 -bottom-0.5 h-[2px] bg-gradient-to-r from-transparent via-[#ffca7a] to-transparent" />
+                  )}
+                </button>
+                {tvScreenMode !== 'launcher' && (
+                  <>
+                    <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onReturnTvLauncher?.();
+                      }}
+                      className={`group relative flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 ${
+                        activeSofaOption === 'launcher' ? '-translate-y-0.5 scale-105' : 'opacity-80 hover:-translate-y-0.5 hover:opacity-100'
+                      }`}
+                    >
+                      <span
+                        className={`text-[15px] tracking-[0.08em] ${
+                          activeSofaOption === 'launcher' ? 'text-[#ffd8fb]' : 'text-[#ffe0f7] group-hover:text-[#ecc4ff]'
+                        }`}
+                        style={PINK_PURPLE_OUTLINE_STYLE}
+                      >
+                        游戏选单
+                      </span>
+                      {activeSofaOption === 'launcher' && (
+                        <span className="text-[12px] text-[#ffd8fb]" style={PINK_PURPLE_OUTLINE_STYLE}>
+                          [F]
+                        </span>
+                      )}
+                      {activeSofaOption === 'launcher' && (
+                        <span className="pointer-events-none absolute left-0 right-0 -bottom-0.5 h-[2px] bg-gradient-to-r from-transparent via-[#ffb8f5] to-transparent" />
+                      )}
+                    </button>
+                  </>
+                )}
+                <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onStopSofaCoPlay?.();
+                  }}
+                  className={`group relative flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 ${
+                    activeSofaOption === 'stop_coplay' ? '-translate-y-0.5 scale-105' : 'opacity-80 hover:-translate-y-0.5 hover:opacity-100'
+                  }`}
+                >
+                  <span
+                    className={`text-[15px] tracking-[0.08em] ${
+                      activeSofaOption === 'stop_coplay' ? 'text-[#ffd8fb]' : 'text-[#ffe0f7] group-hover:text-[#ecc4ff]'
+                    }`}
+                    style={PINK_PURPLE_OUTLINE_STYLE}
+                  >
+                    放回手柄
+                  </span>
+                  {activeSofaOption === 'stop_coplay' && (
+                    <span className="text-[12px] text-[#ffd8fb]" style={PINK_PURPLE_OUTLINE_STYLE}>
+                      [F]
+                    </span>
+                  )}
+                  {activeSofaOption === 'stop_coplay' && (
+                    <span className="pointer-events-none absolute left-0 right-0 -bottom-0.5 h-[2px] bg-gradient-to-r from-transparent via-[#ffb8f5] to-transparent" />
+                  )}
+                </button>
+              </>
+            )}
+
+            <span className="h-3.5 w-[1.5px] bg-gradient-to-b from-transparent via-[#f2b5ff]/75 to-transparent" />
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onStandUpSofa?.();
+              }}
+              className={`group relative flex items-center gap-1.5 bg-transparent border-0 px-1.5 py-1 cursor-pointer outline-none transition-transform duration-150 ${
+                activeSofaOption === 'stand_up' ? '-translate-y-0.5 scale-105' : 'opacity-80 hover:-translate-y-0.5 hover:opacity-100'
+              }`}
+            >
+              <span
+                className={`text-[16px] tracking-[0.08em] ${
+                  activeSofaOption === 'stand_up' ? 'text-[#ffd8fb]' : 'text-[#ffe0f7] group-hover:text-[#ecc4ff]'
+                }`}
+                style={PINK_PURPLE_OUTLINE_STYLE}
+              >
+                起身离开
+              </span>
+              {activeSofaOption === 'stand_up' && (
+                <span className="text-[12px] text-[#ffd8fb]" style={PINK_PURPLE_OUTLINE_STYLE}>
+                  [F]
+                </span>
+              )}
+              {activeSofaOption === 'stand_up' && (
+                <span className="pointer-events-none absolute left-0 right-0 -bottom-0.5 h-[2px] bg-gradient-to-r from-transparent via-[#ffb8f5] to-transparent" />
+              )}
+            </button>
+          </div>
+          <span
+            className="text-[11.5px] tracking-[0.12em] text-[#f2d0ff]/85"
+            style={PINK_PURPLE_OUTLINE_STYLE}
+          >
+            滚轮切换选项 · F 键确认
+          </span>
         </div>
       )}
 

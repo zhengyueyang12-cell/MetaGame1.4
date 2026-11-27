@@ -4,6 +4,7 @@ import { createBeveledBox, createMoldedDrawerFront } from '../geometries';
 import type { OutlineRegistry, ProceduralTextures, TwilightUniforms } from '../pipeline';
 import { createTwilightMaterial } from '../pipeline';
 import { mergeDynamicSubtreeMeshes, SceneManager } from '../SceneManager';
+import { apartmentColorStudio } from '../devColorStudio';
 import type { DoorController, InteractableTarget, InteractResult, RoomId } from '../types';
 
 export interface CeilingLampRig {
@@ -533,11 +534,13 @@ export function createRoomBuildContext(
       map: textures.furnitureOak,
       bumpMap: textures.furnitureWoodBump,
       bumpScale: 0.005,
-      color: baseDoorColor.clone().lerp(new THREE.Color(0xfff4e0), 0.35),
+      color: 0xf5e2c4,
       roughness: 0.60,
       metalness: 0.0,
-      woodLacquer: 0.50,
+      woodLacquer: 0.48,
     });
+    apartmentColorStudio.registerMaterialColor('doorAndTrim', '门框与墙角框线', 'global', frameCasingMat);
+    apartmentColorStudio.registerMaterialColor('doorLeaf', '全屋木门门扇', 'global', doorLeafMat);
 
     // 1. Clean Single-Layer Architectural Doorway Architrave Frame (Jambs + Header Casing)
     const frameGroup = new THREE.Group();
@@ -565,6 +568,16 @@ export function createRoomBuildContext(
     header.position.set(0, doorHeight + 0.026, 0);
     header.castShadow = true;
     frameGroup.add(header);
+
+    // Sculpted Beveled Solid-Wood Door Threshold Strip directly beneath every door (门正下方木质压条)
+    const thresholdGeo = isAlongZ
+      ? createBeveledBox(0.215, 0.014, doorWidth + 0.055, 0.005, 2)
+      : createBeveledBox(doorWidth + 0.055, 0.014, 0.215, 0.005, 2);
+    const thresholdStrip = new THREE.Mesh(thresholdGeo, frameCasingMat);
+    thresholdStrip.position.set(0, 0.007, 0);
+    thresholdStrip.receiveShadow = true;
+    frameGroup.add(thresholdStrip);
+
     structureGroup.add(frameGroup);
 
     // 2. Pivoting Solid-Oak Door Leaf with Seamless Monolithic 3D Carved Recessed Panels
@@ -1036,6 +1049,9 @@ export function createRoomBuildContext(
     proximityRadius?: number;
   }): CeilingLampRig => {
     const mats = opts.bulbMaterials ?? [];
+    if (mats.length > 0) {
+      apartmentColorStudio.registerMaterialColor('lampColor', '全屋灯具/光源色调', 'global', mats);
+    }
     const rig: CeilingLampRig = {
       id: opts.id,
       room: opts.room,
